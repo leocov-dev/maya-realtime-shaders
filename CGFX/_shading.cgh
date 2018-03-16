@@ -1,0 +1,412 @@
+//_shading.cgh
+//requires _basic.cgh
+
+#define MAX_MIP_LVL 9.0
+
+//================================================
+// Shading Functions
+//================================================
+
+float fresnelBasic(float3 N, float3 V, float fresnelExp)
+//this is the most basic approximation of the fresnel function
+{
+    return max(0.f,pow(abs(1.0-dot(N,V)),fresnelExp));
+}
+
+float fresnelRim(float3 N, float3 V, float bias, float power)
+{
+	float NdV = abs(dot(N,V));
+	float Fr = pow(max(0.f,1-NdV),5);
+				Fr = pow(biasB(Fr,bias),power);
+	return max(0.0, Fr);
+}
+
+//Schlick's Fresnel Approximation from Rudy Cortes 'The Renderman Shading Language Guide' pg 313 - good for reflections
+float fresnelSchlick(float3 N, float3 V, float bias, float eta)
+{
+	float NdV = abs(dot(N,V));
+	float Fr = eta + (1-eta)*pow(max(0.f,1-NdV),5);
+				Fr = biasB(Fr,bias);
+	return max(0.0, Fr);
+}
+
+// http://odforce.net/wiki/index.php/ReflectanceFunctions#Redefining_the_BRDF
+float fresnelSchlickIOR(float3 N, float3 V, float ior)
+{
+	float  NdV = abs(dot(N,V));
+  float  kr  = (ior-1.0)/(ior+1.0);
+  			 kr  *= kr;
+  return kr  + (1.0-kr) * pow(1.0-NdV,5);
+}
+
+float fresnelBRDF(float3 N, float3 V, float deg0, float deg90, float brdfCurve)
+{
+	return lerp(deg0, deg90, pow(abs(1-abs(dot(V,N))), brdfCurve));
+}
+
+// http://www.gamasutra.com/view/feature/2860/implementing_modular_hlsl_with_.php?page=3
+float orenNayar(float3 L, float3 N, float3 V, float roughness)
+{
+	float VdN = saturate(dot(V,N));
+	float LdN = saturate(dot(L,N));
+	float theta_r = acos(VdN);
+	float theta_i = acos(LdN);
+	float cos_phi_diff = saturate(dot(normalize(V-N*VdN), normalize(L-N*(LdN)) ) );
+	float alpha = max(theta_i, theta_r);
+	float beta  = min(theta_i, theta_r);
+	float sigma2 = sq(roughness);
+	float A = 1.0 - 0.5 * sigma2/(sigma2+0.33);
+	float B = 0.45 * sigma2/(sigma2+0.09);
+	
+	if (cos_phi_diff >= 0.0) B *= sin(alpha)*tan(beta);
+	else B *= 0.0;
+
+	return max(0.0, LdN * (A + B) );
+}
+
+//http://content.gpwiki.org/index.php/D3DBook:(Lighting)_Oren-Nayar
+float orenNayarComplex(float3 L, float3 N, float3 V, float roughness)
+{ 
+    // Compute the other aliases
+    float alpha    = max( acos( dot( V, N ) ), acos( dot( L, N ) ) );
+    float beta     = min( acos( dot( V, N ) ), acos( dot( L, N ) ) );
+    float gamma    = dot( V - N * dot( V, N ), L - N * dot( L, N ) );
+    float rough_sq = roughness * roughness;
+ 
+    float C1       = 1.0f - 0.5f * ( rough_sq / ( rough_sq + 0.33f ) );
+ 
+    float C2       = 0.45f * ( rough_sq / ( rough_sq + 0.09 ) );
+    if( gamma >= 0 )
+    {
+        C2 *= sin( alpha );
+    }
+    else
+    {
+        C2 *= ( sin( alpha ) - pow( (2 * beta) / PI, 3 ) );
+    }
+ 
+    float C3  = (1.0f / 8.0f) ;
+    C3       *= ( rough_sq / ( rough_sq + 0.09f ) );
+    C3       *= pow( ( 4.0f * alpha * beta ) / (PI * PI), 2 );
+ 
+    float A = gamma * C2 * tan( beta );
+    float B = (1 - abs( gamma )) * C3 * tan( (alpha + beta) / 2.0f );
+ 
+    return max( 0.0f, dot( N, L ) ) * ( C1 + A + B );
+}
+
+//mia helper
+float roughness(float gloss)
+{
+	return pow(2.0, 8.0 * gloss );
+}
+
+//mia helper
+float roughAdjust(float input)
+{
+	if (input >= 80.0)
+	{
+	  return 80.0 + sqrt(input - 80.0);
+	}
+	return input;
+}
+
+//compiled from a combination of Rudy Cortes "The Renderman Sahding Language Guide" and the Mental Mill Ward Aniso Node
+float wardAnisotropic(float3 L, float3 V, float3 N, float3 Tn, float3 Bn, float xroughness, float yroughness, float rotation)
+{
+	float result = 0.0;
+	
+  Tn = normalize(cross(cross(N,Tn),N) ); //perturb the Tangent by the Normal so normal map will show
+  Bn = normalize(cross(cross(N,Bn),N) ); //perturb the Binormal by the Normal so normal map will show
+			
+	float cos_theta_i =  dot(-L, N);
+	float cos_theta_r =  -dot(V, N);
+	if ((cos_theta_r * cos_theta_i) >= 0.0001)
+	{
+		float X = sq(xroughness);
+		float Y = sq(yroughness);
+		float3 H = normalize(L + V);
+		float Hn = saturate(sq(dot(H, N) ) );
+
+		float Hu = sq(dot(H, Tn));
+		float Hv = sq(dot(H, Bn));
+		if (Hn >= (0.0001 * ((Hu * X) + (Hv * Y))))
+		{
+			float exponent = float((-((Hu * X) + (Hv * Y))) / Hn);
+			result = ((((exp(exponent)) * xroughness) * yroughness) / (((sqrt((cos_theta_r * cos_theta_i))) * 4.0) * PI));
+		}
+	}
+	return smoothstep(0.0,0.1,dot(N,L)) * max(0.0,result);
+}
+
+//3Delight for Maya's mia_material_x.h used for reference
+float mia_spec(float3 L, float3 V, float3 N, float3 Tn, float3 Bn, float glossiness, float glossTexture, float rotation, float anisotropy)
+{
+  float component_coefs[3] = {0.5,1.0,1.5};
+	
+	float specLvl = 0.0;
+	
+	//You can do 3 combined spec highlights for a punchier look
+	//for (int i; i<=3; i++)
+	//{
+		float refl_roughness_u = roughness(glossiness*glossTexture);
+		float refl_roughness_v = refl_roughness_u * max(anisotropy, 0.01);
+					
+		refl_roughness_u = roughAdjust(refl_roughness_u);
+		refl_roughness_v = roughAdjust(refl_roughness_v);
+		
+		specLvl = wardAnisotropic(L, V, N, Tn, Bn, refl_roughness_u, refl_roughness_v, rotation);
+		//specLvl += wardAnisotropicB(L, V, N, Tn, Bn, refl_roughness_u, refl_roughness_v, rotation)*component_coefs[i];
+		//glossiness *= 1.5;
+	//}
+	
+	return specLvl;
+}
+
+// Blinn D3 (Trowbridge-Reitz) specular distribution - http://theinstructionlimit.com/isotropic-specular-reflection-models-comparison
+float trowbridgeReitz(float3 N, float3 V, float3 L, float roughness)
+{					
+	float3 H = normalize(L + V);
+	float NdH = saturate(dot(N, H));
+	float result = pow(1 / (1 + (1 - pow(NdH, 2)) * roughness), 2);
+	//result = 1/pow(sq(roughness)*sq(cos(NdH)) + sq(sin(NdH))  ,10);
+	return smoothstep(0.0,0.1,dot(N,L)) * max(0.0,result);
+}
+
+// Blinn D2 (Torrance-Sparrow/Gauss) specular distribution - http://theinstructionlimit.com/isotropic-specular-reflection-models-comparison
+float torranceSparrow(float3 N, float3 V, float3 L, float roughness)
+{
+	float3 H = normalize(L + V);
+	float NdH = dot(N, H);
+	float alpha = acos(NdH);
+	float result = exp(-2 * roughness * pow(alpha, 2));
+	return smoothstep(0.0,0.1,dot(N,L)) * max(0.0,result);
+}
+
+//================================================
+// Misc Functions
+
+//John Hable's filmic tonemap function with fixed values
+float3 filmicTonemap(float3 input)
+{
+  float A = 0.22;
+  float B = 0.3;
+  float C = 0.1;
+  float D = 0.2;
+  float E = 0.01;
+  float F = 0.3;
+  float linearWhite = 11.2;
+  float3 Fcolor = ((input*(A*input+C*B)+D*E)/(input*(A*input+B)+D*F)) - E/F;
+  float  Fwhite = ((linearWhite*(A*linearWhite+C*B)+D*E)/(linearWhite*(A*linearWhite+B)+D*F)) - E/F;
+  return Fcolor/Fwhite;
+}
+
+//this returns a specular power between a min and max based on the gloss texture
+float specGlossMod(float specPowMin, float specPowMax, float glossTex)
+{
+	specPowMax = (specPowMax>specPowMin) ? specPowMin : specPowMax;
+	float specPower = glossTex*(specPowMax-specPowMin)+specPowMin;
+	return specPower;
+}
+
+//this returns a float for mipmap level selection
+float getGlossMip(float glossTex, float glossMin, float glossMax)
+{
+  float weight = clamp(glossTex, glossMin, glossMax);
+  return (MAX_MIP_LVL-2.0)*weight;
+}
+
+float getGlossMipB(float glossTex, float glossiness, float maxMipLvl)
+{
+	glossiness = invert(saturate(glossiness) *saturate(glossTex) );
+  return (maxMipLvl-2.0)*glossiness;
+}
+
+//darkens grazing angles 
+float3 diffuseFresnelDarkening(float3 N,
+														   float3 V,
+															 float3 color,
+															 float3 diffuseFresnelColor,
+															 float  diffuseFresnelExp,
+															 float  diffuseFresnelAmount)
+{
+	float Fr = saturate(fresnelBasic(N, V, diffuseFresnelExp)) * diffuseFresnelAmount;
+	return lerp(color, color*diffuseFresnelColor, saturate(Fr*diffuseFresnelAmount) );  //can only darken
+}
+
+//================================================
+// Tangent Space Normal Mapping
+//================================================
+float3 normalsTangent(float3 normalTexture,
+                      float3 Nn,
+                      float3 Bn,
+                      float3 Tn,
+                      bool   invertGreen,
+											float  normalIntensity)
+{
+  if(invertGreen)normalTexture.g = 1.0 - normalTexture.g;
+  float3 normalValues = normalTexture * 2.0 - 1.0;
+  if (normalIntensity > 0) Nn = normalize((normalValues.x*Tn*normalIntensity )+(normalValues.y*Bn*normalIntensity )+(normalValues.z*Nn ) );
+
+  return Nn;
+}
+
+//================================================
+// Ambient Shading - Uniform, Hemisphere, and Cubemap
+//================================================
+
+float3 ambientEnv(float3 N,
+									float3 groundColor,
+									float3 skyColor,
+									float  ambCubeScale,
+									bool   useEnvCube,
+									samplerCUBE envCubeMapSampler)
+{
+	float3 Ambient = 0.0;
+	if(useEnvCube) Ambient = texCUBElod(envCubeMapSampler, float4(N, MAX_MIP_LVL-1.0) ).rgb;
+  else           Ambient = N.y * (0.5*(skyColor-groundColor)) + (0.5*(skyColor+groundColor)); //simplification of hemispherical lighting code thanks to Greg Seegert
+  return Ambient * ambCubeScale;
+}
+
+float3 ambientEnvB(float3 N,
+								 	 float3 groundColor,
+								   float3 skyColor,
+									 float  ambCubeScale,
+									 float  ambientPower,
+									 float  maxMipLvl,
+									 bool   useEnvCube,
+									 samplerCUBE envCubeMapSampler)
+{
+	float3 Ambient = 0.0;
+	if(useEnvCube) Ambient = texCUBElod(envCubeMapSampler, float4(N, maxMipLvl-1.0) ).rgb;
+  else           Ambient = N.y * (0.5*(skyColor-groundColor)) + (0.5*(skyColor+groundColor)); //simplification of hemispherical lighting code thanks to Greg Seegert
+  return pow(abs(Ambient), ambientPower) * ambCubeScale;
+}
+
+//================================================
+// Rim lighting effect
+//================================================
+float3 rimLightDual(float3 V,
+                    float3 N,
+                    float3 rimAColor,
+                    float3 rimBColor,
+                    float  rimABias,
+                    float  rimBBias,
+                    float  rimAEta,
+                    float  rimBEta,
+                    float3 diffuseMask,
+                    bool   useRimLightA,
+                    bool   useRimLightB)
+{
+  float  FrA = max(0.0,fresnelRim(N, V, rimABias, rimAEta));
+  float  FrB = max(0.0,fresnelRim(N, V, rimBBias, rimBEta));
+  float3 Rim = 0.0;
+  // rim world up
+  if(useRimLightA) Rim += FrA*rimAColor*max(0.0,pow(dot(N,float3(0,1,0))*0.5+.5,2));//I use a half lambert style calculation on N.Y instead of standard lambert because it gives a softer blend across the surface
+  // rim unlit side
+  if(useRimLightB) Rim += FrB*rimBColor*max(0.0,invert(diffuseMask.r));
+  return Rim;
+}
+
+float3 rimLightDirectional()
+{
+	return 0.0;
+}
+
+float3 rimLightWorld()
+{
+	return 0.0;
+}
+
+//================================================
+// Reflection
+//================================================
+float4 reflection(int    reflMode,
+									float3 R,
+									float  reflScale,
+									float3 N,
+									float3 V,
+									float  bias,
+									float  eta,
+									float  Kfr,
+	                float  glossTex,
+	                float  blurMin,
+	                float  blurMax,
+									bool   useEnvCube,
+									samplerCUBE cubeSampler)
+{
+	float Fresnel = fresnelSchlick(N,
+	                               V,
+	                               bias,
+	                               eta);
+
+	float3 Refl     = 0.0;
+	float  ReflMask = 0.0;
+
+	//Cubemap Reflections
+	if (reflMode==1 && useEnvCube)
+	{
+		float miplvl = getGlossMip(glossTex, blurMin, blurMax);
+		Refl = texCUBElod(cubeSampler, float4(R,miplvl)).rgb;
+		Refl *= Fresnel;
+		ReflMask = saturate(Fresnel);
+	}
+	
+	//Hard Reflections
+	if (reflMode==2)
+	{
+		Refl = float3(0.1,0.2,0.3);
+		ReflMask = 0.5;
+	}
+
+	//Soft Reflections
+	if (reflMode==3)
+	{
+		Refl = float3(0.3,0.2,0.1);
+		ReflMask = 0.5;
+	}
+
+	return float4(Refl*reflScale, ReflMask);
+}
+
+float3 reflectionB(int    reflMode,
+									 float  maxMipLvl,
+									 float  cubeMultiplier,
+									 float  cubePower,
+									 float  cubeSaturation,
+									 float3 N,
+									 float3 V,
+									 float  glossiness,
+	                 float  glossTex,
+	                 float  rotation,
+									 bool   useEnvCube,
+									 samplerCUBE cubeSampler)
+{
+	
+  float3 R = rotateVectorAboutY(rotation, reflect(-V,N)); //reflection vector
+  	
+	float3 Refl     = 0.0;
+	
+	//Cubemap Reflections
+	if (reflMode==1 && useEnvCube)
+	{
+		float miplvl = getGlossMipB(glossTex, clamp(glossiness,0.0,0.96), maxMipLvl);
+		Refl = ungamma22(texCUBElod(cubeSampler, float4(R,miplvl)).rgb);
+		Refl = desaturate(Refl, cubeSaturation);
+		Refl = pow(abs(Refl), cubePower) * cubeMultiplier;
+	}
+	
+	//Hard Reflections
+	if (reflMode==2)
+	{
+		Refl = float3(0.1,0.2,0.3);
+	}
+
+	//Soft Reflections
+	if (reflMode==3)
+	{
+		Refl = float3(0.3,0.2,0.1);
+	}
+
+	return Refl;
+}

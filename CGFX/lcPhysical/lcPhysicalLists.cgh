@@ -1,0 +1,42 @@
+lights lightList[4];
+
+void buildLightList(float3 WSPos)
+{
+	lightList[0].lVector = -lightDirectional.xyz;
+	lightList[0].lColor = lightDirectionalColor;
+	lightList[0].lIntensity = lightDirectionalIntensity;
+	lightList[0].lEnabled = lightDirectionalSwitch;
+
+	lightList[1].lVector = (lightPoint1.xyz - WSPos);
+	lightList[1].lColor = lightPoint1Color;
+	lightList[1].lIntensity = lightPoint1Intensity;
+	lightList[1].lEnabled = lightPoint1Switch;
+
+	lightList[2].lVector = (lightPoint2.xyz - WSPos);
+	lightList[2].lColor = lightPoint2Color;
+	lightList[2].lIntensity = lightPoint2Intensity;
+	lightList[2].lEnabled = lightPoint2Switch;
+
+	lightList[3].lVector = (lightPoint3.xyz - WSPos);
+	lightList[3].lColor = lightPoint3Color;
+	lightList[3].lIntensity = lightPoint3Intensity;
+	lightList[3].lEnabled = lightPoint3Switch;
+
+}
+
+shadows shadowList[4];
+
+void buildShadowList(float2 UVShadow)
+{
+	shadowList[0].sTexture = tex2D(shadow0TextureSampler, UVShadow).rgb;
+	shadowList[0].sEnabled = lightDirectionalShadowSwitch;
+
+	shadowList[1].sTexture = tex2D(shadow1TextureSampler, UVShadow).rgb;
+	shadowList[1].sEnabled = lightPoint1ShadowSwitch;
+
+	shadowList[2].sTexture = tex2D(shadow2TextureSampler, UVShadow).rgb;
+	shadowList[2].sEnabled = lightPoint2ShadowSwitch;
+
+	shadowList[3].sTexture = tex2D(shadow3TextureSampler, UVShadow).rgb;
+	shadowList[3].sEnabled = lightPoint3ShadowSwitch;
+}

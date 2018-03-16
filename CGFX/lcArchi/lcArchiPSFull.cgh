@@ -1,0 +1,172 @@
+//================================================
+//     Full Shading
+//================================================
+float4 PSFull (vert2pixel IN) : COLOR
+{
+	buildLightList(IN.WSPos);
+	buildShadowList(IN.UV.zw);
+
+	//Initialize variables
+	float3 V   = normalize(IN.eyeVec);
+  float3 Nw  = normalize(IN.worldNormal);
+  float3 Bw  = normalize(IN.worldBinormal);
+  float3 Tw  = normalize(IN.worldTangent);
+  float2 UV = IN.UV.xy;
+	float3 N = Nw;
+
+
+  //Initialize textures
+	float  Opacity               = opacity;
+	float3 Color                 = 0.0;
+	float3 Shadow                = 1.0;
+	float3 Ambient               = 0.0;
+	float3 Albedo						     = ungamma22(diffuseColor);
+	float3 Occlusion				     = 1.0;
+	float  Fresnel					     = 1.0;
+	float3 Reflection				     = 0.0;
+	float3 reflectivityMaskTexture = 1.0;
+	float3 Specular					     = 0.0;
+	float4 SpecularTexture	     = 1.0;
+	float3 Diffuse               = 0.0;
+	float3 Rim                   = 0.0;
+	float3 rimMaskTexture        = 1.0;
+	float3 Glow							     = 0.0;
+	
+	
+	if (useNormalTexture)
+	{
+		float3 normalTexture = tex2D(normalTextureSampler, UV).rgb;
+		N = normalsTangent(normalTexture, N, Bw, Tw, invertGreen, max(1.0, normalsMultiplier) );
+	}
+	
+	
+	if (useDiffuseTexture)
+	{
+		float4 diffuseTexture = tex2D(diffuseTextureSampler, UV);
+		diffuseTexture.rgb = ungamma22(diffuseTexture.rgb);
+		Opacity *= diffuseTexture.a;
+		Albedo = diffuseTexture.rgb;
+	}
+	
+	if (useOcclusionTexture)
+	{
+		Occlusion = tex2D(occlusionTextureSampler, UV).rgb;
+	}
+	
+	if (useGlowTexture)
+	{
+		float3 glowTexture = ungamma22(tex2D(glowTextureSampler, UV).rgb);
+		Glow = glowTexture * max(1.0, glowMultiplier);
+	}
+	
+	if (useSpecularTexture)
+	{
+		float4 specularTexture = tex2D(specularTextureSampler, UV);
+		specularTexture.rgb = ungamma22(specularTexture.rgb);
+		SpecularTexture = specularTexture;
+	}
+	
+	if (useRimMaskTexture)
+	{
+		rimMaskTexture = tex2D(rimMaskTextureSampler, UV).rgb;
+	}
+	
+	if (useReflectivityMaskTexture)
+	{
+		reflectivityMaskTexture = tex2D(reflectivityMaskTextureSampler, UV).rgb;
+	}
+		
+  //Shading
+  if (Opacity>0)
+  {				  	
+	  //Light Loop
+	  for (int i=0; i < MAX_LIGHTS; i++)
+	  {
+	  	if (lightList[i].lEnabled)
+	  	{
+		  	float3 L  = normalize(lightList[i].lVector);   //get the light vector
+		  	float3 Lc = ungamma22(lightList[i].lColor);    //get the light color, it's an interface color so ungamma
+		   
+		    Shadow = (shadowList[i].sEnabled) ? shadowList[i].sTexture : 1.0;
+		    
+		  	float3 Li = orenNayar(L, (noDiffuseBump)?Nw:N, V, diffuseRoughness);
+		  		
+				Diffuse += Li * Lc * Shadow * attenuation(lightList[i].lVector) * lightList[i].lIntensity;
+				
+		  	float3 Si = mia_spec(L, V, (noSpecularBump)?Nw:N, Tw, Bw, glossiness, SpecularTexture.a, 0.0, 1.0);
+		  				  				  	
+		  	Specular += Si * Lc * Shadow * attenuation(lightList[i].lVector) * lightList[i].lIntensity * highlightMultiplier;
+		  }
+	  }
+	  
+	}
+	
+	Ambient = ambientEnvB(rotateVectorAboutY(envCubeRotation, N),
+												ungamma22(groundColor),
+												ungamma22(skyColor),
+												ambientMultiplier,
+												ambientPower,
+												maxMipLvl,
+												useEnvCubeTexture,
+												envCubeTextureSampler);
+	
+	if (!highlightOnly)
+	{
+		Reflection = reflectionB(1,
+														 maxMipLvl,
+														 reflectionMultiplier,
+														 reflectionPower,
+														 reflectionSaturation,
+														 (noSpecularBump)?Nw:N,
+														 V,
+														 glossiness,
+														 SpecularTexture.a,
+														 envCubeRotation,
+														 useEnvCubeTexture,
+														 envCubeTextureSampler);
+	}
+													 
+	Ambient *= Albedo * Occlusion;
+	
+	Albedo  *= diffuseWeight;// * Occlusion;
+	
+	float3 TotalReflection = (Specular+Reflection) * reflectivity * ungamma22(reflectionColor) * SpecularTexture.rgb * reflectivityMaskTexture;
+	
+	if (useFresnel)
+	{
+		Fresnel = fresnelSchlickIOR((noSpecularBump)?Nw:N, V, ior);
+	}else{
+		Fresnel = fresnelBRDF((noSpecularBump)?Nw:N, V, deg0, deg90, brdfCurve);
+	}
+	if(metalMaterial)
+	{
+		TotalReflection*=Albedo;
+		TotalReflection*=18;
+	}
+	if(aoBlocksReflection) TotalReflection*=Occlusion;
+	
+	Rim = rimLightDual(V,
+                     N,
+                     ungamma22(rimAColor),
+                     ungamma22(rimBColor),
+                     rimABias,
+                     rimBBias,
+                     rimAPower,
+                     rimBPower,
+                     saturate(luminance(Diffuse)),
+                     rimA,
+                     rimB);                 
+  
+	
+	Color += Ambient;
+	Color += Diffuse*Albedo*invert(reflectivity*saturate(Fresnel) );
+	Color += TotalReflection*(Fresnel*max(1.0,fresnelMultiplier));
+	Color += Rim*rimMaskTexture;
+	Color += Glow;
+	
+	//Color = DiffuseMask;
+	
+	Color = lerp(Color, filmicTonemap(Color) , globalTonemap );
+  return float4(gamma22(Color), Opacity );
+  
+}

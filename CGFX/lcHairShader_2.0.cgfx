@@ -1,0 +1,810 @@
+///////////////////////////////////////////////////////////////////////////////////////
+//  lcHairShader.cgfx
+//
+//  Author: Leonardo Covarrubias
+//  Date: 08/12/2010
+//  Contact: leo.covarrubias@live.com
+//  Website: blog.leocov.com - www.leocov.com
+//
+//  Special thanks for inspiration and learing:
+//
+//  Ben Cloward - http://www.bencloward.com
+//  Brice Vandemoortele - http://www.mentalwarp.com
+//  Joel Styles - Fake Subsurface Scattering - www.jistyles.com
+//  'The Renderman Sading Language Guide' - Rudy Cortes - www.rslprogramming.com - many basic and shading functions
+//  RenderMonkey by ATI - http://developer.amd.com/gpu/rendermonkey/Pages/default.aspx
+//  Charles Hollemeersch - litsphere shader - http://charles.hollemeersch.net/
+//  'Advanced Game Development with Programmable Graphics Hardware' - Alan Watt, Fabio Policarpo - 1D texture mapping
+//  'Practical Real-Time Hair Rendering and Shading' Thorsten Scheuermann - ATI Research - Siggraph 2004
+//  'Uncharted 2: HDR Lighting' presentation by John Hable
+//
+//  This work is licensed under a  Creative Commons Attribution-Share Alike 3.0 Unported License
+//  http://creativecommons.org/licenses/by-sa/3.0/
+//
+//  Change List:
+//
+//  1.0 - 08/19/2010 - initial release
+//  1.1 - 08/21/2010 - some fixes for the AO and shadowMap code
+//  1.2 - 08/22/2010 - added linear lighting option - sRGB correction for color swatches and color textures
+//  2.0 - 09/06/2010 - rewrite - illuminance loop style and simplification of the number and complexity of functions
+//
+///////////////////////////////////////////////////////////////////////////////////////
+
+#define MAX_LIGHTS 3
+
+string description = "Leo Covarrubias - blog.leocov.com";
+string URL = "http://blog.leocov.com/search/label/cgfx";
+
+////////////////////////////////////////
+//     User Tweakables                //
+////////////////////////////////////////
+
+float globalTonemap
+<
+  float UIMin     = 0.0;
+  float UIMax     = 1.0;
+  float UIStep    = 0.1;
+  string UIName   = "Basic Global Tonemapping";
+> = 0.0;
+
+float exposure
+<
+  float UIMin     = -10.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+  string UIName   = "Global Exposure";
+> = 0.0;
+
+bool linear
+<
+  string UIName   = "Linear Color Math?";
+> = true;
+
+float tileTextures
+<
+  float UIMin     = 1.0;
+  float UIMax     = 20.0;
+  float UIStep    = 0.1;
+  string UIName   = "Main UV Texture Tiling";
+> = 1.0;
+
+//Backface Lighting - default(false) => backface lighting same as frontface
+bool backFaceLighting
+<
+  string UIName   = "Back Face Lighting?";
+> = false;
+
+//Toggle diffuse map's alpha channel
+bool alphaToggle
+<
+  string UIName   = "Alpha Toggle (diffuse.a)";
+> = true;
+
+//Ambeint
+float3 ambientColor
+<
+  string UIName   = "Ambient Color";
+  string Type     = "Color";
+> = {0.0, 0.0, 0.0};
+
+//Diffuse
+float3 hairColor
+<
+  string UIName   = "Hair Color";
+  string Type     = "Color";
+> = {1.0, 1.0, 1.0};
+
+float3 specularColor
+<
+  string UIName   = "Specular Color";
+  string Type     = "Color";
+> = {0.5, 0.5, 0.5};
+
+float specularPower
+<
+  float UIMin     = 1.0;
+  float UIMax     = 256.0;
+  float UIStep    = 0.1;
+  string UIName   = "Specular Power";
+> = 30.0;
+
+float specSharpness
+<
+  float UIMin     = 0.0;
+  float UIMax     = 1;
+  float UIStep    = 0.1;
+  string UIName   = "Spec Edge Sharpness";
+> = 0.85;
+
+float specFresnelExp
+<
+    float UIMin = 0.0;
+    float UIMax = 5.0;
+    float UIStep = 0.1;
+    string UIName = "Specular Fresnel Exponent";
+> = 0.0;
+
+float specFresnelScale
+<
+    float UIMin = 1.0;
+    float UIMax = 15.0;
+    float UIStep = 0.1;
+    string UIName = "Specular Fresnel Multiplier";
+> = 1.0;
+
+bool spacerDiffuse<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Diffuse Textures
+bool useDiffuseMap
+<
+  string UIName   = "Use A Diffuse Texture?";
+> = false;
+
+texture diffuseMap
+<
+  string ResourceType = "2D";
+  string UIName       = "Diffuse Map";
+>;
+
+sampler2D diffuseMapSampler = sampler_state
+{
+  Texture       = <diffuseMap>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  //MaxAnisotropy = 8;  //some people may need to comment this out
+  LODBias       = -0.5;
+};
+
+bool spacerSpec<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Specular Additional Attributes
+bool useNormalMap
+<
+  string UIName = "Use A Normal Map?";
+> = false;
+
+bool flipGreen
+<
+  string UIName   = "Invert Normal Map Green Channel?";
+> = false;
+
+bool noNormalTiling
+<
+  string UIName   = "Tile Normal Map?";
+> = false;
+
+float normalIntensity
+<
+    float UIMin = 0.0;
+    float UIMax = 1;
+    float UIStep = 0.1;
+    string UIName   = "Normal Map Intensity";
+> = 1.0;
+
+bool specNoiseInNm
+<
+  string UIName = "Spec Noise in normal.a?";
+> = true;
+
+float specShift
+<
+    float UIMin = -0.5;
+    float UIMax = 1;
+    float UIStep = 0.01;
+    string UIName = "Specular Highlight Shift";
+> = 0.0;
+
+float specNoiseScale
+<
+    float UIMin = 0.0;
+    float UIMax = 1.0;
+    float UIStep = 0.1;
+    string UIName = "Specular Noise Map Scale";
+> = 1.0;
+
+texture normalMap
+<
+  string ResourceType = "2D";
+  string UIName       = "Specular Map";
+>;
+
+sampler2D normalMapSampler = sampler_state
+{
+  Texture       = <normalMap>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  LODBias       = -0.5;
+};
+
+bool spacerRim<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Rim Light
+bool useRimLight
+<
+  string UIName   = "Use Rim Light?";
+> = false;
+
+bool useRimLightSec
+<
+  string UIName   = "Use Secondary Rim Light?";
+> = false;
+
+float rimExponent
+<
+  float UIMin     = 0.0;
+  float UIMax     = 5.0;
+  float UIStep    = 0.1;
+  string UIName   = "Rim Light Exponent";
+> = 2.2;
+
+float3 rimColor
+<
+  string UIName   = "Rim Light Color";
+  string Type     = "Color";
+> = {0.75, 0.9, 1.0};
+
+float3 rimColorSec
+<
+  string UIName   = "Rim Light B Color";
+  string Type     = "Color";
+> = {0.75, 0.9, 1.1};
+
+bool spacerHemi<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Hemispherical Ambient Shading
+bool useAmbientHemi
+<
+  string UIName = "Use Hemispherical Ambient?";
+> = false;
+
+float3 skyColor
+<
+  string UIName   = "Hemispherical Sky Color";
+  string Type     = "Color";
+> = {0.7, 0.95, 1.0};
+
+float3 groundColor
+<
+  string UIName   = "Hemispherical Ground Color";
+  string Type     = "Color";
+> = {0.23, 0.27, 0.12};
+
+
+bool spacerCube<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Cubemap for Reflections and Ambient Shading
+bool useAmbCube
+<
+  string UIName = "Use Cubemap for Ambient?";
+> = false;
+
+float ambCubeScale
+<
+  float UIMin     = 0.0;
+  float UIMax     = 20.0;
+  float UIStep    = 0.1;
+  string UIName   = "Ambient Cubemap Intensity";
+> = 1;
+
+bool useReflCube
+<
+  string UIName = "Use Cubemap for Reflection?";
+> = false;
+
+float reflCubeScale
+<
+  float UIMin     = 0.0;
+  float UIMax     = 20.0;
+  float UIStep    = 0.1;
+  string UIName   = "Reflection Cubemap Intensity";
+> = 1;
+
+float reflFresnelExp
+<
+    float UIMin = 0.0;
+    float UIMax = 5;
+    float UIStep = 0.1;
+    string UIName = "Reflection Fresnel Exponent";
+> = 1.0;
+
+float reflCubeGain
+<
+  float UIMin     = 0.1;
+  float UIMax     = 0.9;
+  float UIStep    = 0.1;
+  string UIName   = "Reflection Cubemap Contrast";
+> = 0.5;
+
+float glossBlurWeight
+<
+    float UIMin = 0.0;
+    float UIMax = 1.0;
+    float UIStep = 0.1;
+    string UIName = "Gloss Blurring Amount";
+> = 0.0;
+
+texture envCubeMap
+<
+    string UIName = "Reflection Env Map";
+    string ResourceType = "Cube";
+>;
+
+samplerCUBE envCubeMapSampler = sampler_state
+{
+  Texture = <envCubeMap>;
+  MinFilter = LinearMipMapLinear;
+  MagFilter = Linear;
+  WrapR = ClampToEdge;
+  WrapS = ClampToEdge;
+  WrapT = ClampToEdge;
+};
+
+bool spacerShadowMap<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+//////////////////////////////////
+////// Shadow Map Attributes
+bool useShadowMap
+<
+  string UIName   = "Use a Shadow Map?";
+> = false;
+
+bool useAO
+<
+  string UIName = "AO in shadowMap.a?";
+> = false;
+
+bool useSecondaryUVAO
+<
+  string UIName = "AO uses secondary UV's?";
+> = false;
+
+bool vertAO
+<
+  string UIName = "AO in vertex color?";
+> = false;
+
+float aoDiffuseBlend
+<
+    float UIMin = 0.0;
+    float UIMax = 1.0;
+    float UIStep = 0.1;
+    string UIName = "Weight of AO on Diffuse";
+> = 1.0;
+
+texture shadowMap
+<
+  string ResourceType = "2D";
+  string UIName       = "Shadow Map";
+>;
+
+sampler2D shadowMapSampler = sampler_state
+{
+  Texture   = <shadowMap>;
+  MinFilter = LinearMipMapLinear;
+  MagFilter = Linear;
+  WrapS     = Wrap;
+  WrapT     = Wrap;
+};
+
+bool spacerLights<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////
+//     Lights - position and color    //
+////////////////////////////////////////
+
+float4 light1Dir : DIRECTION
+<
+  string UIName = "Light 1 - Directional Light";
+  string Space  = "World";
+> = {0.0, -1.0, -1.0, 0.0};
+
+float3 light1Color
+<
+  string UIName   = "Light1Color";
+  string Type     = "Color";
+> = {1.0, 1.0, 1.0};
+
+float4 light2Dir : DIRECTION
+<
+  string UIName = "Light 2 - Directional Light";
+  string Space  = "World";
+> = {-1.0, 1.0, 1.0, 0.0};
+
+
+float3 light2Color
+<
+  string UIName   = "Light2Color";
+  string Type     = "Color";
+  int LightRef    = 1;
+> = {0.00, 0.00, 0.00};
+
+float4 light3Dir : DIRECTION
+<
+  string UIName = "Light 3 - Directional Light";
+  string Space  = "World";
+> = {1.0, 1.0, 1.0, 0.0};
+
+
+float3 light3Color
+<
+  string UIName   = "Light3Color";
+  string Type     = "Color";
+  int LightRef    = 2;
+> = { 0.00, 0.00, 0.00};
+
+////////////////////////////////////////
+//     Auto Maxtricies                //
+////////////////////////////////////////
+
+float4x4 WorldViewProjection   : WorldViewProjection   ;
+float4x4 WorldInverseTranspose : WorldInverseTranspose ;
+float4x4 ViewInverse           : ViewInverse           ;
+float4x4 World                 : World                 ;
+
+////////////////////////////////////////
+//     Fragment Program Functions     //
+////////////////////////////////////////
+
+float3 ungamma22 (float3 input)
+{
+  return (linear) ? pow(input,2.2) : input;
+}
+
+float3 gamma22 (float3 input)
+{
+  return (linear) ? pow(input,1/2.2) : input;
+}
+
+float gamma (float val, float g)
+{
+  return pow(val,g);
+}
+
+float bias (float val, float b) //Rudy Cortes - The Renderman Shading Language Guide
+{
+  return (b>0) ? pow(abs(val),log(b) / log(0.5)) : 0;
+}
+
+float gain (float val, float g) //Rudy Cortes - The Renderman Shading Language Guide
+{
+  return 0.5 * ((val<0.5) ? bias(2.0*val, 1.0-g) : (2.0 - bias(2.0-2.0*val, 1.0-g)));
+}
+
+float3 filmicTonemap(float3 input)
+{
+  float A = 0.22;
+  float B = 0.3;
+  float C = 0.1;
+  float D = 0.2;
+  float E = 0.01;
+  float F = 0.3;
+  float linearWhite = 11.2;
+  float3 Fcolor = ((input*(A*input+C*B)+D*E)/(input*(A*input+B)+D*F)) - E/F;
+  float  Fwhite = ((linearWhite*(A*linearWhite+C*B)+D*E)/(linearWhite*(A*linearWhite+B)+D*F)) - E/F;
+  return Fcolor/Fwhite;
+}
+
+float3 lambertHair (float3 L, float3 N)
+{
+  //return smoothstep(-0.1,0.75, max(0,dot(N,L)*0.8+0.2) );
+  return smoothstep(-0.1,0.75, lerp(0.25,1.0,dot(N,L)) );
+}
+
+float3 kajiyaKay (float3 N, float3 Bn, float3 V, float3 L, float specNoise) //hair specular function based on tangent or binormal direction
+{
+  float3 B = normalize(Bn + N * specNoise);
+  float3 H = normalize(L + V);
+  return sqrt(1-pow(dot(B,H),2));
+}
+
+float fresnel (float3 N, float3 V, float fresnelExp) //this is the most basic approximation of the fresnel function
+{
+  return max(0,pow(abs(1.0-dot(N,V)),fresnelExp));
+}
+
+//this returns a float for mipmap level selection
+float glossBlur (float specPow, float glossTex, float weight)
+{
+    float mipMax = 7;
+    specPow = (specPow>=1) ? 1 : specPow;
+    float G = (specPow*glossTex);
+    //G = 1-G;
+    return mipMax*G*weight;
+}
+
+//////////////////////////////////////////////////
+//     Compartmentalized Shading Components     //
+//////////////////////////////////////////////////
+
+////////////////////////////////////////
+// Tangent Space Normal Mapping
+float3 normalsTangent (float4 normalTexture,
+                       float3 Nn,
+                       float3 Bn,
+                       float3 Tn,
+                       float3 V)
+{
+  if(flipGreen)normalTexture.g = 1.0 - normalTexture.g;
+
+  if(backFaceLighting == true) Nn = faceforward(Nn,-V,Nn);
+  if(useNormalMap)
+  {
+    normalTexture.rgb = normalTexture.rgb * 2.0 - 1.0;
+    normalTexture.xy *= normalIntensity;
+
+    if (normalIntensity > 0) Nn = normalize((normalTexture.x*Tn)+(normalTexture.y*Bn)+(normalTexture.z*Nn));
+  }
+
+  return Nn;
+}
+
+////////////////////////////////////////
+// Ambient Shading - Uniform, Hemisphere, and Cubemap
+float3 ambientEnv (float3 N)
+{
+  groundColor = ungamma22(groundColor);
+  skyColor = ungamma22(skyColor);
+
+  if(useAmbientHemi) return lerp(groundColor,skyColor,max(0,0.5*N.y+0.5));  //linearly interpolate between the two colors based on the World Normal's Y/up vector (shifted into 0-1 range)
+  if(useAmbCube) return ungamma22(texCUBElod(envCubeMapSampler, float4(N,7.8)).rgb)*ambCubeScale;
+  return 1;
+}
+
+////////////////////////////////////////
+// Rim lighting effect
+float3 rimLight (float3 N,
+                 float3 V)
+{
+  rimColor = ungamma22(rimColor);
+  //multiply a fresnel edge effect with 'N dot WorldUp'
+  //creates a general rimlighting effect from a light upward and behind.
+  float3 Fr = 0;
+  if(useRimLight) Fr = fresnel(N,V,rimExponent)*rimColor*max(0,pow(dot(N,float3(0,1,0))*0.5+.5,2));//I use a half lambert style calculation on N.Y instead of standard lambert because it gives a softer blend across the surface
+  return Fr;
+}
+
+float3 rimLightSec (float3 diffuseComp,
+                    float3 V,
+                    float3 Nn)
+{
+  rimColorSec = ungamma22(rimColorSec);
+  float3 Fr = 0;
+  if (useRimLightSec) Fr = fresnel(Nn,V,rimExponent)*rimColorSec*(1.0-diffuseComp);
+  return Fr;
+}
+
+////////////////////////////////////////
+// CubeMap Reflection
+float3 reflectionCube (float noise,
+                       float3 N,
+                       float3 V)
+{
+  float rNoise = (((noise*2)-1)*specNoiseScale);
+  float3 R = reflect(-V,N)+(N*rNoise); //reflection vector
+
+  float roughness = 1;
+  float Fr = fresnel(N,V,reflFresnelExp);
+  float miplvl = glossBlur (specularPower, roughness, glossBlurWeight); //set a mipmap level to give the impression of blur
+  float3 REnv = 0;
+  if(useReflCube) REnv = ungamma22(texCUBElod(envCubeMapSampler, float4(R,miplvl)).rgb);  //lets you choose a mip level for the cube map to make it appear blurred
+
+  //apply a contrast function to increase or decrease contrast - most useful as an increase
+  REnv.r = gain(REnv.r,reflCubeGain);
+  REnv.g = gain(REnv.g,reflCubeGain);
+  REnv.b = gain(REnv.b,reflCubeGain);
+
+  return REnv*reflCubeScale*Fr;
+}
+
+////////////////////////////////////////
+// Alpha Texture
+float alpha (float4 diffuseTexture)
+{
+  float A = 1;
+  if(alphaToggle) A = diffuseTexture.a;
+
+  return A;
+}
+
+////////////////////////////////////////
+//     Structs                        //
+////////////////////////////////////////
+
+// input from application
+struct app2vert {
+    float4 Position : POSITION;
+    float2 TexCoord : TEXCOORD0;
+    float2 TexCoord2: TEXCOORD1;
+    float4 Normal   : NORMAL;
+    float4 Binormal : BINORMAL;
+    float4 Tangent  : TANGENT;
+    float4 VertColor: COLOR;
+};
+
+// output to fragment program
+struct vert2pixel {
+    float4 hpos          : POSITION;
+    float2 UV            : TEXCOORD0;
+    float2 UVsh          : TEXCOORD1;
+    float3 worldNormal   : TEXCOORD2;
+    float3 worldBinormal : TEXCOORD3;
+    float3 worldTangent  : TEXCOORD4;
+    float3 eyeVec        : TEXCOORD5;
+    float3 vertColor     : TEXCOORD6;
+
+};
+
+////////////////////////////////////////
+//     VERTEX SHADER                  //
+////////////////////////////////////////
+
+vert2pixel VS(app2vert IN)
+{
+  vert2pixel OUT;
+
+  OUT.vertColor = IN.VertColor;
+
+  OUT.hpos = mul(WorldViewProjection, IN.Position);
+  OUT.UV = IN.TexCoord.xy;
+  OUT.UVsh = IN.TexCoord2.xy;
+
+  OUT.worldNormal   = mul(WorldInverseTranspose, IN.Normal).xyz;
+  OUT.worldTangent  = mul(WorldInverseTranspose, IN.Tangent).xyz;
+  OUT.worldBinormal = mul(WorldInverseTranspose, IN.Binormal).xyz;
+
+  float4 worldSpacePos = mul(World, IN.Position);
+  OUT.eyeVec.xyz = float3(ViewInverse[0].w,ViewInverse[1].w,ViewInverse[2].w) - worldSpacePos.xyz;
+
+
+  return OUT;
+}
+
+////////////////////////////////////////
+//     Pixel Shaders                  //
+////////////////////////////////////////
+
+float4 PSFull (vert2pixel IN): COLOR
+{
+  float3 lights [MAX_LIGHTS][2]= { { normalize(-light1Dir.xyz), light1Color },
+                                   { normalize(-light2Dir.xyz), light2Color },
+                                   { normalize(-light3Dir.xyz), light3Color } };
+
+  float3 V   = normalize(IN.eyeVec);
+  float3 Nw  = normalize(IN.worldNormal);
+  float3 Bw  = normalize(IN.worldBinormal);
+  float3 Tw  = normalize(IN.worldTangent);
+
+  float2 UV = IN.UV*tileTextures;
+  float2 UVsh = IN.UVsh;
+
+  float4 Dt   = tex2D(diffuseMapSampler, UV);
+  Dt.rgb = ungamma22(Dt.rgb);
+  if(!useDiffuseMap) Dt.rgb = float3(1,1,1);
+  if(!alphaToggle) Dt.a = 1.0;
+
+  float2 UVn = UV;
+  if(!noNormalTiling) UV = IN.UV;
+  float4 Nt   = tex2D(normalMapSampler, UV);
+         Nt.a = tex2D(normalMapSampler, UVn).a;
+  if(!useNormalMap) Nt.rgb = float3(1,1,1);
+  if(!specNoiseInNm) Nt.a = 1.0;
+  float4 Shwt = tex2D(shadowMapSampler, UVsh);
+  if(!useShadowMap) Shwt.rgb = float3(1,1,1);
+  if(!useAO) Shwt.a = 1.0;
+  
+  
+  ambientColor = ungamma22(ambientColor);
+  hairColor = ungamma22(hairColor);
+  specularColor = ungamma22(specularColor);
+
+  ///////////////////////
+  // Normal Component //
+  float3 N = normalsTangent(Nt,
+                            Nw,
+                            Bw,
+                            Tw,
+                            V);
+
+  // Light Loop
+  // Diffuse and Specular
+  float3 Ci = 0;
+  float3 Cd = 0;
+
+  float Fr = fresnel(N,V,specFresnelExp)*specFresnelScale;
+
+  float ShwtAO = Shwt.a;
+  if(!useSecondaryUVAO&&useAO) ShwtAO = tex2D(shadowMapSampler, UV).a;
+  float3 AO = (vertAO) ? IN.vertColor : ShwtAO;
+  float3 Shadow = 1;
+
+  for ( int i = 0; i < MAX_LIGHTS; i++  )
+  {
+    if(i==0) Shadow = Shwt.r;
+    if(i==1) Shadow = Shwt.g;
+    if(i==2) Shadow = Shwt.b;
+
+    float3 L = lights[i][0];
+    float3 Lc = ungamma22(lights[i][1]); //light color is an interface color swatch and needs to be gamma corrected
+
+    float3 Diffuse = lambertHair(L, N);
+
+    //this adds the waviness to the spec highlight based on a noisy texture, also can shift the highlight across the surface
+    float specNoise = specShift;
+    if(specNoiseInNm) specNoise = (((Nt.a*2)-1)*specNoiseScale)+specShift;
+
+    float3 Spec1 = smoothstep(0.72-specSharpness,0.72+specSharpness,pow( kajiyaKay(N,Bw,V,L,specNoise),specularPower));  //smoothstep allows us to harden or soften the edge of the primary spec highlight
+    float3 Spec2 = pow( kajiyaKay(N,Bw,V,L,specNoise+0.15),specularPower/4) * Dt.rgb * hairColor;  //a secondary specular highlight shifted slightly above and tinted with the diffuse textrue color and the hair color
+      
+    Diffuse *= Lc;
+    Cd += Diffuse;
+    Diffuse *= (useDiffuseMap) ? Dt.rgb*hairColor : hairColor;
+    
+    float3 Specular = smoothstep(0,0.25,lambertHair(L,N)) * (Spec1+Spec2)*Lc*specularColor*Fr;
+    
+    Ci += (Diffuse+Specular)*Shadow*saturate(lerp(1.0,AO.x,aoDiffuseBlend));
+    Shadow = 1;
+  }
+  
+  // Rim Light Component
+  Ci += rimLight(N,
+                 V);
+  Ci += rimLightSec (Cd,  //use Cd instead of Ci to mask the rim light by only the diffuse light intensity
+                     V,
+                     N);
+
+  // Cubemap Reflection Component
+  Ci += reflectionCube(Nt.a,
+                       N,
+                       V) * AO;
+
+  //Ambient Component
+  ambientColor *= ambientEnv(N)*AO;
+  Ci += (useDiffuseMap) ? ambientColor*Dt.rgb*hairColor : ambientColor*hairColor;
+  
+  /////////////////////
+  // Alpha Component //
+  float Oi = alpha(tex2D(diffuseMapSampler, IN.UV));
+
+  //Ci = gamma22(Ci);  //re-apply gamma, without tonemapping
+  Ci = lerp(gamma22(Ci*pow(2,exposure)),gamma22(filmicTonemap(Ci*pow(2,exposure))),globalTonemap);
+
+  return float4(Ci,Oi);  //Incident Color and Incident Opacity
+}
+
+////////////////////////////////////////
+//     Techniques                     //
+////////////////////////////////////////
+
+technique Full_1_Bit_Alpha //onebit alpha testing
+{
+  pass P0
+  {
+    CullFaceEnable=false;
+    AlphaTestEnable = true;           //alpha test flag
+    AlphaFunc = float2(Greater, .5);  //alpha test flag
+    VertexShader   = compile vp40 VS();
+    PixelShader = compile fp40 PSFull();
+  }
+}
+
+technique Full_8_Bit_Alpha //8bit alpha blending - has problems in maya viewport with sorting
+{
+  pass P0
+  {
+    CullFaceEnable=false;
+    BlendEnable = true;                             //alpha blending flag
+    blendfunc = float2(srcalpha, oneminussrcalpha); //alpha blending flag
+    VertexProgram   = compile vp40 VS();
+    FragmentProgram = compile fp40 PSFull();
+  }
+}
+
+technique _ //empty technique for Maya 2011
+{
+  pass P0
+  {
+    //empty
+  }
+}

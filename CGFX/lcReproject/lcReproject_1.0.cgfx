@@ -1,0 +1,147 @@
+string description = "Leo Covarrubias - blog.leocov.com";
+string URL = "http://blog.leocov.com/search/label/cgfx";
+
+#include "lcReprojectAttr.cgh"
+
+sampler2D colorTextureSampler = sampler_state
+{
+  Texture       = <colorTexture>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  MipFilter			= Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  MipMapLodBias = -0.5;
+};
+
+sampler2D normalTextureSampler = sampler_state
+{
+  Texture       = <normalTexture>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  MipFilter			= Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  MipMapLodBias = -0.5;
+};
+
+samplerCUBE envCubeTextureSampler = sampler_state
+{
+  Texture   = <envCubeTexture>;
+  MinFilter = LinearMipMapLinear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  WrapR     = ClampToEdge;
+  WrapS     = ClampToEdge;
+  WrapT     = ClampToEdge;
+};
+
+sampler2D litSphereTextureSampler = sampler_state
+{
+  Texture       = <litSphereTexture>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  MipFilter			= Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  MipMapLodBias = -0.5;
+};
+
+//================================================
+//     VERTEX SHADER
+//================================================
+vert2pixel VS(app2vert IN, uniform bool backface)
+{
+  vert2pixel OUT;
+
+  OUT.hpos = mul(WorldViewProjection, IN.Position);
+  
+  if(outputInUvSpace)
+  {
+  	float2 uvBake = (outputToUvBake) ? IN.TexCoordBake : IN.TexCoord;
+		float2 uvPos = uvBake * float2(2,-2*FIXCOORD) + float2(-1,1*FIXCOORD);
+		OUT.hpos = float4(uvPos,0,1);
+	}
+	
+  OUT.UV.xy = IN.TexCoord.xy;
+
+  OUT.worldNormal   = (backface) ? -1*mul(WorldInverseTranspose, IN.Normal).xyz : mul(WorldInverseTranspose, IN.Normal).xyz;
+  OUT.worldTangent  = mul(WorldInverseTranspose, IN.Tangent).xyz;
+  OUT.worldBinormal = mul(WorldInverseTranspose, IN.Binormal).xyz;
+
+  OUT.WSPos = mul(World, IN.Position).xyz;
+  OUT.eyeVec.xyz = float3(ViewInverse[0].w,ViewInverse[1].w,ViewInverse[2].w) - OUT.WSPos.xyz;
+
+  return OUT;
+}
+
+#include "lcReprojectPSFull.cgh"
+technique gp4fp_1 //onebit alpha testing
+{
+  pass Front
+  {
+    CullFaceEnable=true;
+    CullMode = Back;
+
+    DepthMask = true;
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+
+    BlendEnable = true;
+
+		BlendFunc = int2(SrcAlpha, OneMinusSrcAlpha );
+		BlendFuncSeparate = int4(SrcAlpha, OneMinusSrcAlpha, One, OneMinusSrcAlpha );
+		BlendEquationSeparate = int2(Add, Add );
+		BlendColor = float4(1.0, 1.0, 1.0, 1.0 );
+
+    VertexProgram   = compile gp4vp VS(false);
+    FragmentProgram = compile gp4fp PSFull();
+  }
+}
+
+technique gp4fp_2 //onebit alpha testing
+{
+  pass Front
+  {
+    CullFaceEnable=true;
+    CullMode = Back;
+
+    DepthMask = true;
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+
+    BlendEnable = true;
+
+		BlendFunc = int2(SrcAlpha, OneMinusSrcAlpha );
+		BlendFuncSeparate = int4(SrcAlpha, OneMinusSrcAlpha, One, OneMinusSrcAlpha );
+		BlendEquationSeparate = int2(Add, Add );
+		BlendColor = float4(1.0, 1.0, 1.0, 1.0 );
+
+    VertexProgram   = compile gp4vp VS(false);
+    FragmentProgram = compile gp4fp PSFull();
+  }
+  pass Back
+  {
+    CullFaceEnable=true;
+    CullMode = Front;
+
+    DepthMask = true;
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+
+    BlendEnable = true;
+
+		BlendFunc = int2(SrcAlpha, OneMinusSrcAlpha );
+		BlendFuncSeparate = int4(SrcAlpha, OneMinusSrcAlpha, One, OneMinusSrcAlpha );
+		BlendEquationSeparate = int2(Add, Add );
+		BlendColor = float4(1.0, 1.0, 1.0, 1.0 );
+
+    VertexProgram   = compile gp4vp VS(true);
+    FragmentProgram = compile gp4fp PSFull();
+  }
+
+}
+
+technique _
+{
+}

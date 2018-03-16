@@ -1,0 +1,7 @@
+//lcRetopo_Attr.cgh
+
+#ifdef MAYA_TEXCOORD_ORIENTATION_OPENGL
+	#define FIXCOORD -1
+#else
+	#define FIXCOORD 1
+#endif

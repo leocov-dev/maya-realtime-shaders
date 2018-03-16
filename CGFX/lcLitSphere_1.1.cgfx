@@ -1,0 +1,282 @@
+///////////////////////////////////////////////////////////////////////////////////////
+//  lcLitSphere.cgfx
+//
+//  Author: Leonardo Covarrubias
+//  Date: 09/06/2010
+//  Contact: leo.covarrubias@live.com
+//  Website: blog.leocov.com - www.leocov.com
+//
+//
+//  Special thanks for inspiration and learing:
+//
+//  Ben Cloward - http://www.bencloward.com
+//  Brice Vandemoortele - http://www.mentalwarp.com
+//  Joel Styles - Fake Subsurface Scattering - www.jistyles.com
+//  'The Renderman Sading Language Guide' - Rudy Cortes - www.rslprogramming.com - many basic and shading functions
+//  RenderMonkey by ATI - http://developer.amd.com/gpu/rendermonkey/Pages/default.aspx
+//  Charles Hollemeersch - litsphere shader - http://charles.hollemeersch.net/
+//  'Advanced Game Development with Programmable Graphics Hardware' - Alan Watt, Fabio Policarpo - 1D texture mapping
+//  'Uncharted 2: HDR Lighting' presentation by John Hable
+//
+//  This work is licensed under a  Creative Commons Attribution-Share Alike 3.0 Unported License
+//  http://creativecommons.org/licenses/by-sa/3.0/
+//
+//  Change List:
+//
+//  1.0 - 09/06/2010 - initial release - this is an example shader to show how to do lit-sphere shading, using a 2D image of a colored sphere, mapping onto geometry
+//  1.1 - 08/25/2011 - added switches to invert the orientation of the texture in X or Y
+//
+///////////////////////////////////////////////////////////////////////////////////////
+
+string description = "Leo Covarrubias - blog.leocov.com";
+string URL = "http://blog.leocov.com/search/label/cgfx";
+
+////////////////////////////////////////
+//     User Tweakables                //
+////////////////////////////////////////
+float globalTonemap
+<
+  float UIMin     = 0.0;
+  float UIMax     = 1.0;
+  float UIStep    = 0.1;
+  string UIName   = "Basic Global Tonemapping";
+> = 0.0;
+
+float exposure
+<
+  float UIMin     = -10.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+  string UIName   = "Global Exposure";
+> = 0.0;
+
+bool linear
+<
+  string UIName   = "Linear Color Math?";
+> = true;
+
+bool spacerLitSphere<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+//////////////////////////////////
+////// Lit Sphere Attributes /////
+//////////////////////////////////
+
+texture litSphereMap
+<
+  string ResourceType = "2D";
+  string UIName       = "Lit Sphere Map";
+>;
+
+bool flipX
+<
+	string UIName = "Flip X";
+> = false;
+
+bool flipY
+<
+	string UIName = "Flip Y";
+> = false;
+
+sampler2D litSphereMapSampler = sampler_state
+{
+  Texture   = <litSphereMap>;
+  MinFilter = LinearMipMapLinear;
+  MagFilter = Linear;
+  WrapS     = ClampToEdge; //ClampToEdge instead of Clamp - prevents blending/blurring with pixels beyond the texture edge
+  WrapT     = ClampToEdge;
+  MaxAnisotropy = 8;
+};
+
+bool spacerN<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Normal Map Textures
+bool useNormalMap
+<
+  string UIName   = "Use A Normal Map?";
+> = false;
+
+float normalIntensity
+<
+  float UIMin     = 0.0;
+  float UIMax     = 3.0;
+  float UIStep    = 0.1;
+  string UIName   = "Normal Map Intensity";
+> = 1.0;
+
+bool flipGreen
+<
+  string UIName   = "Invert Normal Map Green Channel?";
+> = false;
+
+//Normalmap Sampler
+texture normalMap
+<
+  string ResourceType = "2D";
+  string UIName       = "Normal Map";
+>;
+
+sampler2D normalMapSampler = sampler_state
+{
+  Texture       = <normalMap>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  //MaxAnisotropy = 8; //some people may need to comment this out
+  LODBias       = -0.5;
+};
+
+//====================================//
+////// Auto Maxtricies /////////////////
+//====================================//
+
+float4x4 WorldViewProjection   : WorldViewProjection       < string UIWidget = "None"; >;
+float4x4 WorldInverseTranspose : WorldInverseTranspose     < string UIWidget = "None"; >;
+float4x4 ViewInverse           : ViewInverse               < string UIWidget = "None"; >;
+float4x4 World                 : World                     < string UIWidget = "None"; >;
+
+//====================================//
+////// Structs /////////////////////////
+//====================================//
+
+// input from application
+struct app2vert {
+  float4 Position : POSITION;
+  float2 TexCoord : TEXCOORD0;
+  float4 Normal   : NORMAL;
+  float4 Binormal : BINORMAL0;
+  float4 Tangent  : TANGENT0;
+};
+
+
+// output to fragment program
+struct vert2pixel {
+  float4 hpos          : POSITION;
+  float2 UV            : TEXCOORD0;
+  float3 worldNormal   : TEXCOORD1;
+  float3 worldBinormal : TEXCOORD2;
+  float3 worldTangent  : TEXCOORD3;
+  float3 eyeVec        : TEXCOORD4;
+
+};
+
+////////////////////////////////////////
+////// Vertex Shader ///////////////////
+////////////////////////////////////////
+
+vert2pixel VS(app2vert IN)
+{
+  vert2pixel OUT;
+  OUT.hpos = mul(WorldViewProjection, IN.Position);
+  OUT.UV = IN.TexCoord.xy;
+
+  OUT.worldNormal   = mul(WorldInverseTranspose, IN.Normal).xyz;
+  OUT.worldTangent  = mul(WorldInverseTranspose, IN.Tangent).xyz;
+  OUT.worldBinormal = mul(WorldInverseTranspose, IN.Binormal).xyz;
+
+  float4 worldSpacePos = mul(World, IN.Position);
+  OUT.eyeVec.xyz = normalize(float3(ViewInverse[0].w,ViewInverse[1].w,ViewInverse[2].w) - worldSpacePos.xyz);
+
+  return OUT;
+}
+
+////////////////////////////////////////
+//     Fragment Program Functions     //
+////////////////////////////////////////
+
+float3 ungamma22 (float3 input)
+{
+  return (linear) ? pow(input,2.2) : input;
+}
+
+float3 gamma22 (float3 input)
+{
+  return (linear) ? pow(input,1/2.2) : input;
+}
+
+float3 filmicTonemap(float3 input) //John Hable's filmic tonemap function with fixed values
+{
+  float A = 0.22;
+  float B = 0.3;
+  float C = 0.1;
+  float D = 0.2;
+  float E = 0.01;
+  float F = 0.3;
+  float linearWhite = 11.2;
+  float3 Fcolor = ((input*(A*input+C*B)+D*E)/(input*(A*input+B)+D*F)) - E/F;
+  float  Fwhite = ((linearWhite*(A*linearWhite+C*B)+D*E)/(linearWhite*(A*linearWhite+B)+D*F)) - E/F;
+  return Fcolor/Fwhite;
+}
+
+////////////////////////////////////////
+// Tangent Space Normal Mapping
+float3 normalsTangent (float4 normalTexture,
+                       float3 Nn,
+                       float3 Bn,
+                       float3 Tn,
+                       float3 V)
+{
+  if(flipGreen)normalTexture.g = 1.0 - normalTexture.g;
+
+  if(useNormalMap)
+  {
+    normalTexture.rgb = normalTexture.rgb * 2.0 - 1.0;
+    normalTexture.xy *= normalIntensity;
+
+    if (normalIntensity > 0) Nn = normalize((normalTexture.x*Tn)+(normalTexture.y*Bn)+(normalTexture.z*Nn));
+  }
+
+  return Nn;
+}
+
+float4 PSLitSphere (vert2pixel IN) : COLOR
+{
+  float2 UV = IN.UV;
+  ///////////////////////
+  // Normal Component //
+  float3 N = normalsTangent(tex2D(normalMapSampler, UV),
+                            normalize(IN.worldNormal),
+                            normalize(IN.worldBinormal),
+                            normalize(IN.worldTangent),
+                            IN.eyeVec);
+
+  ////////////////////////////////////
+  // Camera Space Normal Component  //
+  float3 Tn = mul(float4(IN.worldTangent,1), ViewInverse).xyz; //transform to View/Camera
+  float3 Bn = mul(float4(IN.worldBinormal,1), ViewInverse).xyz; //transform to View/Camera
+  float3 Nn = mul(float4(IN.worldNormal,1), ViewInverse).xyz; //transform to View/Camera
+  //normal in camera space - dont use for standard shading techniques
+  float3 Nv = normalsTangent(tex2D(normalMapSampler, UV),
+                             normalize(Nn),
+                             normalize(Bn),
+                             normalize(Tn),
+                             IN.eyeVec);
+  ///////////////////////////
+  // Lit Sphere Component  //
+  float fX = 1;
+  float fY = 1;
+  if (flipX) fX = -1;
+  if (flipY) fY = -1;
+  
+  float3 LSc = ungamma22(tex2D(litSphereMapSampler, float2(0.5*fX,0.5*fY) * Nv.xy + 0.5).rgb); //correct the texture mapping orientation by inverting y coord only
+
+  float3 Ci = LSc;
+  float  Oi = 1;
+
+  //Ci = gamma22(Ci);  //re-apply gamma, without tonemapping
+  Ci = lerp(gamma22(Ci*pow(2,exposure)),gamma22(filmicTonemap(Ci*pow(2,exposure))),globalTonemap);
+
+  return float4(Ci,Oi);
+}
+
+technique Lit_Sphere_Shading
+{
+  pass P0
+  {
+    CullFaceEnable=false;
+    DepthTestEnable=true;
+    DepthMask = true;
+    DepthFunc = LEqual;
+    VertexProgram   = compile arbvp1 VS();
+    FragmentProgram = compile arbfp1 PSLitSphere();
+  }
+}

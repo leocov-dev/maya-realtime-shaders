@@ -1,0 +1,82 @@
+//lcBasic.cgh
+
+//================================================
+// General Use Functions
+
+#define PI 3.14159265358979323846f
+
+float sq(float input)
+{
+	return input*input;
+}
+
+float invert(float input)
+{
+	return (1.0-clamp(input,-1,1));
+}
+
+float3 gamma22(float3 input)
+{
+  return pow(abs(input),1/2.2);
+}
+
+float3 ungamma22(float3 input)
+{
+  return pow(abs(input),2.2);
+}
+
+float biasA(float val, float b) //Rudy Cortes 'The Renderman Shading Language Guide'
+{
+  return (b>0) ? pow(abs(val),log(b) / log(0.5)) : 0;
+}
+
+float biasB(float t, float a) //Rudy Cortes 'The Renderman Shading Language Guide' pg 313
+{
+    return pow(abs(t),-(log(a)/log(2.0) ) );
+}
+
+float gain(float val, float g) //Rudy Cortes - The Renderman Shading Language Guide
+{
+  return 0.5 * ((val<0.5) ? biasA(2.0*val, 1.0-g) : (2.0 - biasA(2.0-2.0*val, 1.0-g)));
+}
+
+float attenuation(float3 L)
+{
+    float d = length(L);
+    return (1/sq(d) );
+}
+
+float attenuationScaled(float3 L, float scale)
+{
+    float d = length(L);
+    return (1/sq(d) )*scale;    
+}
+    
+float luminance(float3 color )
+{
+	return 0.30 * color.r + 0.59 * color.g + 0.11 * color.b;
+}
+
+float3 desaturate(float3 color, float saturation)
+{
+	float3 coef = float3(0.3,0.59,0.11);
+	return lerp(color, dot(coef,color), saturation);		
+}
+
+float3 rotateVectorAboutY(float angle, float3 vec)
+{
+	angle = radians(angle);
+  float3x3 rotationMatrix ={float3(cos(angle),0.0,sin(angle)),
+  													float3(0.0,1.0,0.0),
+  													float3(-sin(angle),0.0,cos(angle))};
+  return mul(vec, rotationMatrix);
+}
+
+float3 rotateVectorAboutVector(float angle, float3 vec, float3 vecRef)
+{	
+	angle = radians(angle);
+  float3x3 rotationMatrix ={float3(cos(angle),0.0,sin(angle)),
+  													vecRef,
+  													float3(-sin(angle),0.0,cos(angle))};
+  return mul(vec, rotationMatrix);
+}

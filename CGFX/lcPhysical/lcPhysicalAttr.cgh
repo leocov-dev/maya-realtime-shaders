@@ -1,0 +1,236 @@
+
+#ifdef MAYA_TEXCOORD_ORIENTATION_OPENGL
+	#define FIXCOORD -1
+#else
+	#define FIXCOORD 1
+#endif
+
+#define MAX_LIGHTS 4
+
+//================================================
+//     User Tweakables
+//================================================
+
+bool LIGHTS______________________ = false;
+
+float4 lightDirectional : DIRECTION
+<
+  string Space  = "World";
+> = {0.0, -1.0, -1.0, 0.0};
+
+float4 lightPoint1 : POSITION
+<
+  string Space  = "World";
+> = {0.0, 0.0, 0.0, 0.0};
+
+float4 lightPoint2 : POSITION
+<
+  string Space  = "World";
+> = {0.0, 0.0, 0.0, 0.0};
+
+float4 lightPoint3 : POSITION
+<
+  string Space  = "World";
+> = {0.0, 0.0, 0.0, 0.0};
+
+bool lightDirectionalSwitch = true;
+bool lightPoint1Switch = false;
+bool lightPoint2Switch = false;
+bool lightPoint3Switch = false;
+
+float3 lightDirectionalColor
+<
+  string Type     = "Color";
+> = { 1.0, 1.0, 1.0};
+
+float3 lightPoint1Color
+<
+  string Type     = "Color";
+> = { 0.0, 0.0, 0.0};
+
+float3 lightPoint2Color
+<
+  string Type     = "Color";
+> = { 0.0, 0.0, 0.0};
+
+float3 lightPoint3Color
+<
+  string Type     = "Color";
+> = { 0.0, 0.0, 0.0};
+
+float lightDirectionalIntensity
+<
+  float UIMin  =    1.0;
+  float UIMax  =   10.0;
+  float UIStep =    0.1;
+> = 1.0;
+
+float lightPoint1Intensity
+<
+  float UIMin  =    1.0;
+  float UIMax  = 1000.0;
+  float UIStep =    0.1;
+> = 10.0;
+
+float lightPoint2Intensity
+<
+  float UIMin  =    1.0;
+  float UIMax  = 1000.0;
+  float UIStep =    0.1;
+> = 10.0;
+
+float lightPoint3Intensity
+<
+  float UIMin  =    1.0;
+  float UIMax  = 1000.0;
+  float UIStep =    0.1;
+> = 10.0;
+
+bool lightDirectionalShadowSwitch = false;
+bool lightPoint1ShadowSwitch      = false;
+bool lightPoint2ShadowSwitch      = false;
+bool lightPoint3ShadowSwitch      = false;
+
+bool ____________________________ = false;
+
+bool outputInUvSpace = false;
+bool outputToUvBake  = false;
+
+float maxMipLvl
+<
+  float UIMin     =  0.0;
+  float UIMax     = 10.0;
+  float UIStep    =  0.1;
+> = 9.0;
+
+bool TONEMAPPING_________________ = false;
+
+float globalTonemap
+<
+  float UIMin     = 0.0;
+  float UIMax     = 1.0;
+  float UIStep    = 0.1;
+> = 1.0;
+
+bool SHADING_____________________ = false;
+
+float i_fSubsurface
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.1;
+> = 0.0;
+
+float i_fRoughness
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.1;
+> = 0.0;
+
+bool TRANSPARENCY________________ = false;
+
+float i_fOpacity
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+bool i_bAlphaCutout = true;
+
+bool NORMALS_____________________ = false;
+
+bool i_bNoDiffuseBump = false;
+
+//Textures
+bool TEXTURES____________________ = false;
+
+texture shadow0Texture   <string TextureType = "2D";>;
+sampler2D shadow0TextureSampler = sampler_state
+{
+  Texture   = <shadow0Texture>;
+  MinFilter = Linear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  AddressU  = Wrap;
+  AddressV  = Wrap;
+};
+
+texture shadow1Texture   <string TextureType = "2D";>;
+sampler2D shadow1TextureSampler = sampler_state
+{
+  Texture   = <shadow1Texture>;
+  MinFilter = Linear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  AddressU  = Wrap;
+  AddressV  = Wrap;
+};
+
+texture shadow2Texture   <string TextureType = "2D";>;
+sampler2D shadow2TextureSampler = sampler_state
+{
+  Texture   = <shadow2Texture>;
+  MinFilter = Linear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  AddressU  = Wrap;
+  AddressV  = Wrap;
+};
+
+texture shadow3Texture   <string TextureType = "2D";>;
+sampler2D shadow3TextureSampler = sampler_state
+{
+  Texture   = <shadow3Texture>;
+  MinFilter = Linear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  AddressU  = Wrap;
+  AddressV  = Wrap;
+};
+
+//================================================
+//     Auto Matricies
+//================================================
+float4x4 WorldViewProjection   : WorldViewProjection   ;
+float4x4 WorldInverseTranspose : WorldInverseTranspose ;
+float4x4 ViewInverse           : ViewInverse           ;
+float4x4 World                 : World                 ;
+
+//================================================
+//     Structs
+//================================================
+// input from application
+struct app2vert {
+  float4 Position       : POSITION;
+  float2 TexCoord       : TEXCOORD0;
+  float2 TexCoordShadow : TEXCOORD1;
+  float2 TexCoordBake   : TEXCOORD2;
+  float4 Normal         : NORMAL;
+  float4 Binormal       : BINORMAL;
+  float4 Tangent        : TANGENT;
+};
+// output to fragment program
+struct vert2pixel {
+  float4 hpos          : POSITION;
+  float4 UV            : TEXCOORD0;
+  float3 worldNormal   : TEXCOORD1;
+  float3 worldBinormal : TEXCOORD2;
+  float3 worldTangent  : TEXCOORD3;
+  float3 eyeVec        : TEXCOORD4;
+  float3 WSPos         : TEXCOORD5;
+};
+// lights
+struct lights {
+	float3 lVector;
+	float3 lColor;
+	float  lIntensity;
+	bool   lEnabled;
+};
+
+// shadows
+struct shadows {
+	float3 sTexture;
+	bool   sEnabled;
+};

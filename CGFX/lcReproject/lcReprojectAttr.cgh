@@ -1,0 +1,112 @@
+//lcReprojectAttr.cgh
+
+#ifdef MAYA_TEXCOORD_ORIENTATION_OPENGL
+	#define FIXCOORD -1
+#else
+	#define FIXCOORD 1
+#endif
+
+bool outputInUvSpace = false;
+bool outputToUvBake  = false;
+
+float envRotationX
+<
+  float UIMin  = 0.0;
+  float UIMax  = 360.0;
+  float UIStep = 0.1;
+> = 0.0;
+
+float envRotationY
+<
+  float UIMin  = 0.0;
+  float UIMax  = 360.0;
+  float UIStep = 0.1;
+> = 0.0;
+
+float envRotationZ
+<
+  float UIMin  = 0.0;
+  float UIMax  = 360.0;
+  float UIStep = 0.1;
+> = 0.0;
+
+float envBlur
+<
+  float UIMin  = 0.0;
+  float UIMax  = 10.0;
+  float UIStep = 0.1;
+> = 0.0;
+
+float envPower
+<
+  float UIMin  = 0.0;
+  float UIMax  = 5.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+float envMultiplier
+<
+  float UIMin  = 1.0;
+  float UIMax  = 5.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+bool litSphereFlipX = false;
+bool litSphereFlipY = false;
+
+bool useNormalTexture  = false;
+
+bool invertNormalGreen = false;
+
+float normalsScale
+<
+  float UIMin  = 0.0;
+  float UIMax  = 3.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+bool outputColorTexture     = false;
+bool outputNormalsTexture   = false;
+bool outputEnvCubeTexture   = false;
+bool outputLitSphereTexture = false;
+
+texture colorTexture       <string TextureType = "2D";>;
+texture normalTexture      <string TextureType = "2D";>;
+texture envCubeTexture     <string ResourceType = "Cube";>;
+texture litSphereTexture   <string TextureType = "2D";>;
+
+
+//================================================
+//     Auto Matricies
+//================================================
+
+float4x4 WorldViewProjection   : WorldViewProjection       < string UIWidget = "None"; >;
+float4x4 WorldInverseTranspose : WorldInverseTranspose     < string UIWidget = "None"; >;
+float4x4 ViewInverse           : ViewInverse               < string UIWidget = "None"; >;
+float4x4 World                 : World                     < string UIWidget = "None"; >;
+
+//================================================
+//     Structs
+//================================================
+
+// input from application
+struct app2vert {
+  float4 Position 		: POSITION;
+  float2 TexCoord     : TEXCOORD0;
+  float2 TexCoordBake : TEXCOORD1;
+  float4 Normal   		: NORMAL;
+  float4 Binormal 		: BINORMAL0;
+  float4 Tangent  		: TANGENT0;
+};
+
+
+// output to fragment program
+struct vert2pixel {
+  float4 hpos          : POSITION;
+  float2 UV            : TEXCOORD0;
+  float3 worldNormal   : TEXCOORD1;
+  float3 worldBinormal : TEXCOORD2;
+  float3 worldTangent  : TEXCOORD3;
+  float3 eyeVec        : TEXCOORD4;
+  float3 WSPos         : TEXCOORD5;
+};

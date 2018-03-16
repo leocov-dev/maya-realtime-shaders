@@ -1,0 +1,134 @@
+float shellThickness
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+  string UIName   = "Shell Thickness";
+> = 0.1;
+
+////////////////////////////////////////
+//     Auto Maxtricies                //
+////////////////////////////////////////
+
+float4x4 WorldViewProjection   : WorldViewProjection   ;
+float4x4 WorldInverseTranspose : WorldInverseTranspose ;
+float4x4 ViewInverse           : ViewInverse           ;
+float4x4 World                 : World                 ;
+
+////////////////////////////////////////
+//     Structs                        //
+////////////////////////////////////////
+
+// input from application
+struct app2vert {
+    float4 Position : POSITION;
+    float2 TexCoord : TEXCOORD0;
+    float4 Normal   : NORMAL;
+    float4 Binormal : BINORMAL;
+    float4 Tangent  : TANGENT;
+};
+
+// output to fragment program
+struct vert2pixel {
+    float4 hpos          : POSITION;
+    float2 UV            : TEXCOORD0;
+    float3 worldNormal   : TEXCOORD2;
+    float3 worldBinormal : TEXCOORD3;
+    float3 worldTangent  : TEXCOORD4;
+    float3 eyeVec        : TEXCOORD5;
+
+};
+
+////////////////////////////////////////
+//     VERTEX SHADER                  //
+////////////////////////////////////////
+
+vert2pixel VS_Shell(app2vert IN)
+{
+  vert2pixel OUT;
+  
+  float4 Po = float4(IN.Position.xyz,1);
+  Po += (shellThickness*normalize(float4(IN.Normal.xyz,0))); // the balloon effect
+  
+  OUT.hpos = mul(WorldViewProjection, Po);
+  float3 worldSpacePos  = mul(World, Po).xyz;
+
+  return OUT;
+}
+
+vert2pixel VS(app2vert IN)
+{
+  vert2pixel OUT;
+
+  OUT.hpos = mul(WorldViewProjection, IN.Position);
+  OUT.UV = IN.TexCoord.xy;
+
+  OUT.worldNormal   = mul(WorldInverseTranspose, IN.Normal).xyz;
+  OUT.worldTangent  = mul(WorldInverseTranspose, IN.Tangent).xyz;
+  OUT.worldBinormal = mul(WorldInverseTranspose, IN.Binormal).xyz;
+
+  float3 worldSpacePos  = mul(World, IN.Position).xyz;
+  float3 worldCameraPos = float3(ViewInverse[0].w,ViewInverse[1].w,ViewInverse[2].w);
+  OUT.eyeVec = worldCameraPos - worldSpacePos;
+
+  return OUT;
+}
+
+float4 PS_Shell (vert2pixel IN) : COLOR
+{
+  float3 Ci = float3(0.0,0.0,0.0);
+  float  Oi = 1.0;
+  return float4(Ci,Oi);  //Incident Color and Incident Opacity
+}
+
+float4 PS_Comic (vert2pixel IN) : COLOR
+{
+  float3 Ci = float3(0.5,0.5,0.5);
+  float  Oi = 1.0;
+  return float4(Ci,Oi);  //Incident Color and Incident Opacity
+}
+
+technique Comic_Shell_Test
+{
+  pass P0
+  {
+    CullFaceEnable=True;
+    CullMode = Front;
+    DepthTestEnable=true;
+    DepthMask = true;
+    DepthFunc = LEqual;
+    VertexProgram   = compile vp40 VS_Shell();
+    FragmentProgram = compile fp40 PS_Shell();
+  }
+    pass P1
+  {
+    CullFaceEnable=False;
+    DepthTestEnable=true;
+    DepthMask = true;
+    DepthFunc = LEqual;
+    VertexProgram   = compile vp40 VS();
+    FragmentProgram = compile fp40 PS_Comic();
+  }
+}
+
+technique Test
+{
+  pass P0
+  {
+    CullFaceEnable=False;
+    DepthTestEnable=true;
+    DepthMask = true;
+    DepthFunc = LEqual;
+    VertexProgram   = compile vp40 VS();
+    FragmentProgram = compile fp40 PS_Comic();
+  }
+}
+
+
+technique _ //empty technique for Maya 2011
+{
+  pass P0
+  {
+    //empty
+  }
+}

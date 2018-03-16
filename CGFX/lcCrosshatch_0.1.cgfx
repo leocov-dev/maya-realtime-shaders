@@ -1,0 +1,379 @@
+// cgfx shader demo
+
+//====================================//
+////// User Tweakables /////////////////
+//====================================//
+
+float3 pencil
+<
+  string Type = "Color";
+> = {0.0,0.0,0.0};
+
+float Ka
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.2;
+
+float Kd
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.8;
+
+float Ks
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.6;
+
+float roughness
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.1;
+
+float density
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 1.0;
+
+float thickness
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.3;
+
+float silhouette
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.3;
+
+
+float cutoff1
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.7;
+
+float cutoff2
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.5;
+
+float thresh1
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.4;
+
+float thresh2
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.4;
+
+float scale
+<
+  float UIMin     = 0.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 1.0;
+
+
+float nx1
+<
+  float UIMin     = -10.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.0;
+
+float ny1
+<
+  float UIMin     = -10.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 2.0;
+
+float nz1
+<
+  float UIMin     = -10.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 3.0;
+
+float nx2
+<
+  float UIMin     = -10.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 0.0;
+
+float ny2
+<
+  float UIMin     = -10.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = 3.0;
+
+float nz2
+<
+  float UIMin     = -10.0;
+  float UIMax     = 10.0;
+  float UIStep    = 0.1;
+> = -2.0;
+
+bool useNormalMap
+<
+  string UIName   = "Use A Normal Map?";
+> = false;
+
+float normalIntensity
+<
+  float UIMin     = 0.0;
+  float UIMax     = 3.0;
+  float UIStep    = 0.1;
+  string UIName   = "Normal Map Intensity";
+> = 1.0;
+
+bool flipGreen
+<
+  string UIName   = "Invert Normal Map Green Channel?";
+> = false;
+
+//Normalmap Sampler
+texture normalMap
+<
+  string ResourceType = "2D";
+  string UIName       = "Normal Map";
+>;
+
+sampler2D normalMapSampler = sampler_state
+{
+  Texture       = <normalMap>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  //
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  MaxAnisotropy = 8; //some people may need to comment this out
+  LODBias       = -0.5;
+};
+
+float4 light1Dir : DIRECTION
+<
+  string UIName = "Light 1 - Directional Light";
+  string Space = "World";
+> = {0.0,-1.0,-1.0,0.0};
+
+//====================================//
+////// Auto Maxtricies /////////////////
+//====================================//
+
+float4x4 WorldViewProjection   : WorldViewProjection       < string UIWidget = "None"; >;
+float4x4 WorldInverseTranspose : WorldInverseTranspose     < string UIWidget = "None"; >;
+float4x4 ViewInverse           : ViewInverse               < string UIWidget = "None"; >;
+float4x4 World                 : World                     < string UIWidget = "None"; >;
+
+struct app2vert {
+   float4 Position : POSITION;
+   float2 TexCoord : TEXCOORD0;
+   float4 Normal   : NORMAL;
+   float4 Binormal : BINORMAL;
+   float4 Tangent  : TANGENT;
+};
+
+struct vert2pixel {
+   float4 hpos          : POSITION;
+   float3 worldNormal   : TEXCOORD0;
+   float3 worldBinormal : TEXCOORD1;
+   float3 worldTangent  : TEXCOORD2;
+   float3 eyeVec       : TEXCOORD3;
+   float3 PP            : TEXCOORD4;
+   float2 UV            : TEXCOORD5;
+};
+
+//====================================//
+//==== VERTEX SHADER =================//
+//====================================//
+
+vert2pixel VS(app2vert IN)
+{
+  vert2pixel OUT;
+
+  OUT.hpos = mul(WorldViewProjection, IN.Position);
+  OUT.PP   = mul(World, IN.Position).xyz;
+
+  OUT.UV = IN.TexCoord.xy;
+
+  OUT.worldNormal = mul(WorldInverseTranspose, IN.Normal).xyz;
+  OUT.worldTangent  = mul(WorldInverseTranspose, IN.Tangent).xyz;
+  OUT.worldBinormal = mul(WorldInverseTranspose, IN.Binormal).xyz;
+
+  float3 worldSpacePos = mul(World, IN.Position).xyz;
+  float3 worldCameraPos = float3(ViewInverse[0].w,ViewInverse[1].w,ViewInverse[2].w);
+
+  OUT.eyeVec = worldCameraPos - worldSpacePos;
+
+  return OUT;
+}
+
+//====================================//
+//==== Pixel Shaders =================//
+//====================================//
+
+float3 lambert(float3 N, float3 L)
+{
+  return max(0,dot(N,L));
+}
+
+float3 blinn(float3 N, float3 L, float3 V)
+{
+  float3 H = normalize(L + V);
+  float NdH = max(0,dot(N,H));
+  return pow(NdH,specularPower);
+}
+
+////////////////////////////////////////
+// Tangent Space Normal Mapping
+float3 normalsTangent (float4 normalTexture,
+                       float3 Nn,
+                       float3 Bn,
+                       float3 Tn,
+                       float3 V)
+{
+  if(flipGreen)normalTexture.g = 1.0 - normalTexture.g;
+
+  //if(backFaceLighting == true) Nn = faceforward(Nn,-V,Nn);
+  if(useNormalMap)
+  {
+    normalTexture.rgb = normalTexture.rgb * 2.0 - 1.0;
+    normalTexture.xy *= normalIntensity;
+    if (normalIntensity > 0) Nn = normalize((normalTexture.x*Tn)+(normalTexture.y*Bn)+(normalTexture.z*Nn));
+  }
+
+  return Nn;
+}
+
+float4 PSBasic (vert2pixel IN) : COLOR
+{
+  float3 Nw = normalize(IN.worldNormal);
+  float3 L = normalize(-light1Dir.xyz);
+  float3 V = normalize(IN.eyeVec);
+
+  float3 shading = lambert(Nw,L) * diffuseColor;
+  shading += blinn(Nw, L, V) * specularColor;
+  return float4(shading,1.0);
+}
+
+float4 PSCrosshatch (vert2pixel IN) : COLOR
+{
+  
+  float3 V   = normalize(IN.eyeVec);
+  float3 Nw  = normalize(IN.worldNormal);
+  float3 Bw  = normalize(IN.worldBinormal);
+  float3 Tw  = normalize(IN.worldTangent);
+  float2 UV   = IN.UV;
+  
+  float3 L = normalize(-light1Dir.xyz);
+
+
+  float4 Nt   = tex2D(normalMapSampler, UV);
+
+  // Normal Component
+  float3 N = normalsTangent(Nt,
+                            Nw,
+                            Bw,
+                            Tw,
+                            V);
+
+  float x = IN.PP.x;
+  float y = IN.PP.y;
+  float z = IN.PP.z;
+
+  float i = (lambert(N,L)*Kd).x;
+
+  float3 Ci = float3(1.0,1.0,1.0);
+  float  Oi = 1.0;
+
+  // Hatch 1
+  float a = nx1;
+  float b = ny1;
+  float c = nz1;
+  float d = 0;
+  float r = abs(a*x+b*y+c*z+d)/sqrt(a*a+b*b+c*c);
+
+    /* map radial distance r into ring position [0,1] */
+  float dense = density * 30;
+  r *= dense;
+  float which = mod(floor(r),2);  /* 0 or 1 */
+  r -= floor(r);      /* == mod(r,1) */
+
+    /* Vary line thickness according to darkness */
+  float cut = cutoff1 * scale * pow(0.5,which);
+  float thr = thresh1 * scale * pow(0.5,which);
+  float thick = thickness;
+  thick = thick * (1-smoothstep(cut-thr/2, cut+thr/2, i));
+
+  r = smoothstep(0, thick*0.25, r) - smoothstep(thick, thick*1.25, r);
+  Ci = mix(Ci, pencil, r);
+  
+  	/* Hatch 2 */
+	a = nx2;
+	b = ny2;
+	c = nz2;
+	d = 0;
+	r = abs(a*x+b*y+c*z+d)/sqrt(a*a+b*b+c*c);
+	
+	/* map radial distance r into ring position [0,1] */
+	dense = density * 30;
+	r *= dense;
+	which = mod(floor(r),2);	/* 0 or 1 */
+	r -= floor(r);			/* == mod(r,1) */
+	
+	/* Vary line thickness according to darkness */
+	cut = cutoff2 * scale * pow(0.5,which);
+	thr = thresh2 * scale * pow(0.5,which);
+	thick = thickness;
+	thick = thick * (1-smoothstep(cut-thr/2, cut+thr/2, i));
+
+	r = smoothstep(0, thick*0.25, r) - smoothstep(thick, thick*1.25, r);
+	Ci = mix(Ci, pencil, r);
+
+	/* Darken silhouette. */
+  float edge = smoothstep(silhouette-0.05, silhouette, dot(Nw,V));
+	Ci = mix(pencil, Ci, edge);
+  
+  return float4(Ci,Oi);
+}
+
+//====================================//
+////// Techniques //////////////////////
+//====================================//
+
+technique Basic
+{
+  pass P0
+  {
+    CullFaceEnable=false;
+    DepthTestEnable=true;
+    DepthMask = true;
+    DepthFunc = LEqual;
+    VertexProgram   = compile vp40 VS();
+    FragmentProgram = compile fp40 PSCrosshatch();
+  }
+}

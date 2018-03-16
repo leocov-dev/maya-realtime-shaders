@@ -1,0 +1,4 @@
+string description = "Leo Covarrubias - blog.leocov.com";
+string URL = "http://blog.leocov.com/search/label/cgfx";
+
+#include "lcRetopo_Attr.cgh"

@@ -1,0 +1,438 @@
+
+#ifdef MAYA_TEXCOORD_ORIENTATION_OPENGL
+	#define FIXCOORD -1
+#else
+	#define FIXCOORD 1
+#endif
+
+#define MAX_LIGHTS 4
+
+//================================================
+//     User Tweakables
+//================================================
+
+bool LIGHTS______________________ = false;
+
+float4 lightDirectional : DIRECTION
+<
+  string Space  = "World";
+> = {0.0, -1.0, -1.0, 0.0};
+
+float4 lightPoint1 : POSITION
+<
+  string Space  = "World";
+> = {0.0, 0.0, 0.0, 0.0};
+
+float4 lightPoint2 : POSITION
+<
+  string Space  = "World";
+> = {0.0, 0.0, 0.0, 0.0};
+
+float4 lightPoint3 : POSITION
+<
+  string Space  = "World";
+> = {0.0, 0.0, 0.0, 0.0};
+
+bool lightDirectionalSwitch = true;
+bool lightPoint1Switch = false;
+bool lightPoint2Switch = false;
+bool lightPoint3Switch = false;
+
+float3 lightDirectionalColor
+<
+  string Type     = "Color";
+> = { 1.0, 1.0, 1.0};
+
+float3 lightPoint1Color
+<
+  string Type     = "Color";
+> = { 0.0, 0.0, 0.0};
+
+float3 lightPoint2Color
+<
+  string Type     = "Color";
+> = { 0.0, 0.0, 0.0};
+
+float3 lightPoint3Color
+<
+  string Type     = "Color";
+> = { 0.0, 0.0, 0.0};
+
+float lightDirectionalIntensity
+<
+  float UIMin  =    1.0;
+  float UIMax  =   10.0;
+  float UIStep =    0.1;
+> = 1.0;
+
+float lightPoint1Intensity
+<
+  float UIMin  =    1.0;
+  float UIMax  = 1000.0;
+  float UIStep =    0.1;
+> = 10.0;
+
+float lightPoint2Intensity
+<
+  float UIMin  =    1.0;
+  float UIMax  = 1000.0;
+  float UIStep =    0.1;
+> = 10.0;
+
+float lightPoint3Intensity
+<
+  float UIMin  =    1.0;
+  float UIMax  = 1000.0;
+  float UIStep =    0.1;
+> = 10.0;
+
+bool lightDirectionalShadowSwitch = false;
+bool lightPoint1ShadowSwitch      = false;
+bool lightPoint2ShadowSwitch      = false;
+bool lightPoint3ShadowSwitch      = false;
+
+bool RIM_LIGHTS__________________ = false;
+
+bool rimA = false;
+
+float3 rimAColor
+<
+	string Type = "Color";
+> = {0.75, 0.9, 1.0};
+
+float rimABias
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.1;
+> = 0.5;
+
+float rimAPower
+<
+  float UIMin  = 1.0;
+  float UIMax  = 5.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+bool rimB = false;
+
+float3 rimBColor
+<
+	string Type = "Color";
+> = {0.75, 0.9, 1.0};
+
+float rimBBias
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.1;
+> = 0.5;
+
+float rimBPower
+<
+  float UIMin  = 1.0;
+  float UIMax  = 5.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+bool AMBIENT_LIGHTS______________ = false;
+
+float ambientMultiplier
+<
+  float UIMin  =  1.0;
+  float UIMax  = 10.0;
+  float UIStep =  0.1;
+> = 1.0;
+
+float ambientPower
+<
+  float UIMin  =  1.0;
+  float UIMax  = 10.0;
+  float UIStep =  0.1;
+> = 1.0;
+
+float3 skyColor
+<
+	string Type = "Color";
+> = {1.0, 1.0, 1.0};
+
+float3 groundColor
+<
+	string Type = "Color";
+> = {0.0, 0.0, 0.0};
+
+bool ____________________________ = false;
+
+bool outputInUvSpace = false;
+bool outputToUvBake  = false;
+
+float maxMipLvl
+<
+  float UIMin     =  0.0;
+  float UIMax     = 10.0;
+  float UIStep    =  0.1;
+> = 9.0;
+
+bool TONEMAPPING_________________ = false;
+
+float globalTonemap
+<
+  float UIMin     = 0.0;
+  float UIMax     = 1.0;
+  float UIStep    = 0.1;
+> = 1.0;
+
+bool DIFFUSE_____________________ = false;
+
+float3 diffuseColor
+<
+	string Type = "Color";
+> = {0.5, 0.5, 0.5};
+
+float diffuseWeight
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+float diffuseRoughness
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.1;
+> = 0.0;
+
+bool REFLECTION__________________ = false;
+
+//int reflectionMode
+//<
+//  float UIMin  = 1;
+//  float UIMax  = 3;
+//  float UIStep = 1;
+//> = 1;
+
+float3 reflectionColor
+<
+	string Type = "Color";
+> = {1.0, 1.0, 1.0};
+
+float reflectivity
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.01;
+> = 0.0;
+
+float glossiness
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+float highlightMultiplier
+<
+  float UIMin  =  1.0;
+  float UIMax  = 10.0;
+  float UIStep =  0.1;
+> = 1.0;
+
+float reflectionMultiplier
+<
+  float UIMin  =  1.0;
+  float UIMax  = 10.0;
+  float UIStep =  0.1;
+> = 1.0;
+
+float reflectionPower
+<
+  float UIMin  =  1.0;
+  float UIMax  = 10.0;
+  float UIStep =  0.1;
+> = 1.0;
+
+float reflectionSaturation
+<
+  float UIMin  =  0.0;
+  float UIMax  =  1.0;
+  float UIStep =  0.1;
+> = 0.0;
+
+bool highlightOnly = false;
+
+bool metalMaterial = false;
+
+//bool ANISOTROPY__________________ = false;
+//
+//float anisotropy
+//<
+//  float UIMin  =  0.0;
+//  float UIMax  = 10.0;
+//  float UIStep =  0.1;
+//> = 1.0;
+//
+//float rotation
+//<
+//  float UIMin  = 0.0;
+//  float UIMax  = 1.0;
+//  float UIStep = 0.1;
+//> = 0.0;
+
+bool BRDF________________________ = false;
+
+float fresnelMultiplier
+<
+  float UIMin  = 1.0;
+  float UIMax  = 10.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+float deg0
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.1;
+> = 0.0;
+
+float deg90
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+float brdfCurve
+<
+  float UIMin  = 0.1;
+  float UIMax  = 20.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+bool useFresnel = false;
+
+float ior
+<
+  float UIMin  = 1.0;
+  float UIMax  = 3.0;
+  float UIStep = 0.1;
+> = 1.3;
+
+bool TRANSPARENCY________________ = false;
+
+float opacity
+<
+  float UIMin  = 0.0;
+  float UIMax  = 1.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+bool ENV_________________________ = false;
+
+float envCubeRotation
+<
+	float UIMin  =   0.0;
+	float UIMax  = 360.0;
+	float UIStep =   0.1;
+> = 0.0;
+
+bool AO__________________________ = false;
+
+bool aoBlocksReflection = false;
+
+bool NORMALS_____________________ = false;
+
+float normalsMultiplier
+<
+  float UIMin  = 1.0;
+  float UIMax  = 3.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+bool invertGreen = false;
+
+bool noDiffuseBump = false;
+
+bool noSpecularBump = false;
+
+bool ADDITIONAL__________________ = false;
+
+float glowMultiplier
+<
+  float UIMin  = 1.0;
+  float UIMax  = 3.0;
+  float UIStep = 0.1;
+> = 1.0;
+
+
+//Textures
+
+bool useEnvCubeTexture           = false;
+bool useDiffuseTexture           = false;
+bool useSpecularTexture          = false;
+bool useNormalTexture            = false;
+bool useOcclusionTexture         = false;
+bool useGlowTexture              = false;
+bool useRimMaskTexture           = false;
+bool useReflectivityMaskTexture  = false;
+bool useMetalMaterialMaskTexture = false;
+
+texture envCubeTexture            <string ResourceType = "Cube";>;
+texture diffuseTexture            <string TextureType = "2D";>;
+texture specularTexture           <string TextureType = "2D";>;
+texture normalTexture             <string TextureType = "2D";>;
+texture occlusionTexture          <string TextureType = "2D";>;
+texture glowTexture               <string TextureType = "2D";>;
+texture rimMaskTexture            <string TextureType = "2D";>;
+texture reflectivityMaskTexture   <string TextureType = "2D";>;
+texture metalMaterialMaskTexture  <string TextureType = "2D";>;
+
+texture shadow0Texture   <string TextureType = "2D";>;
+texture shadow1Texture   <string TextureType = "2D";>;
+texture shadow2Texture   <string TextureType = "2D";>;
+texture shadow3Texture   <string TextureType = "2D";>;
+
+//================================================
+//     Auto Matricies
+//================================================
+float4x4 WorldViewProjection   : WorldViewProjection   ;
+float4x4 WorldInverseTranspose : WorldInverseTranspose ;
+float4x4 ViewInverse           : ViewInverse           ;
+float4x4 World                 : World                 ;
+
+//================================================
+//     Structs
+//================================================
+// input from application
+struct app2vert {
+  float4 Position       : POSITION;
+  float2 TexCoord       : TEXCOORD0;
+  float2 TexCoordShadow : TEXCOORD1;
+  float2 TexCoordBake   : TEXCOORD2;
+  float4 Normal         : NORMAL;
+  float4 Binormal       : BINORMAL;
+  float4 Tangent        : TANGENT;
+};
+// output to fragment program
+struct vert2pixel {
+  float4 hpos          : POSITION;
+  float4 UV            : TEXCOORD0;
+  float3 worldNormal   : TEXCOORD1;
+  float3 worldBinormal : TEXCOORD2;
+  float3 worldTangent  : TEXCOORD3;
+  float3 eyeVec        : TEXCOORD4;
+  float3 WSPos         : TEXCOORD5;
+};
+// lights
+struct lights {
+	float3 lVector;
+	float3 lColor;
+	float  lIntensity;
+	bool   lEnabled;
+};
+
+// shadows
+struct shadows {
+	float3 sTexture;
+	bool   sEnabled;
+};

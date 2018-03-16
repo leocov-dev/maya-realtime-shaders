@@ -1,0 +1,659 @@
+///////////////////////////////////////////////////////////////////////////////////////
+//  lcComicShader.cgfx
+//
+//  Author: Leonardo Covarrubias
+//  Date: 11/02/2010
+//  Contact: leo.covarrubias@live.com
+//  Website: blog.leocov.com - www.leocov.com
+//
+//  Special thanks for inspiration and learing:
+//
+//  Ben Cloward - http://www.bencloward.com
+//  Brice Vandemoortele - http://www.mentalwarp.com
+//  Joel Styles - Fake Subsurface Scattering - www.jistyles.com
+//  'The Renderman Sading Language Guide' - Rudy Cortes - www.rslprogramming.com - many basic and shading functions
+//  RenderMonkey by ATI - http://developer.amd.com/gpu/rendermonkey/Pages/default.aspx
+//  Charles Hollemeersch - litsphere shader - http://charles.hollemeersch.net/
+//  'Advanced Game Development with Programmable Graphics Hardware' - Alan Watt, Fabio Policarpo - 1D texture mapping
+//  'Uncharted 2: HDR Lighting' presentation by John Hable
+//
+//  This work is licensed under a  Creative Commons Attribution-Share Alike 3.0 Unported License
+//  http://creativecommons.org/licenses/by-sa/3.0/
+//
+//  Change List:
+//
+//  1.0 - 11/02/2010 - initial release
+//  1.1 - 11/16/2010 - removed outline and rimlight mask textures, rearranged some interface attrs, fixed glowmap toggle in 'diffuse only' technique
+//  1.2 - 12/10/2010 - changed to 2-pass system for backface lighting - avoids faceforward() edge shading errors
+//  1.3 - 12/13/2010 - fixed issues with improperly applying gamma correction to alpha channel used for transparency
+//  1.4 - 02/15/2011 - technique with mipmap level previewing
+//  1.5 - 02/16/2011 - mip previewing in all techniques with switch
+//  1.6 - 07/11/2011 - added option for seperate specular texture
+//  1.7 - 08/18/2011 - modified technique names to standardize
+//
+//
+//
+//   Red = Specular power (shinniness)
+//   Green = Specular amount (mask)
+//   Blue = (only for certain templates) Rim amount (mask)
+//   Alpha = (only for certain templates) Rim power
+///////////////////////////////////////////////////////////////////////////////////////
+
+#define MAX_LIGHTS 1
+
+string description = "Leo Covarrubias - blog.leocov.com";
+//string URL = "http://";
+
+////////////////////////////////////////
+//     User Tweakables                //
+////////////////////////////////////////
+
+bool linear
+<
+  string UIName   = "Linear Color Math?";
+> = true;
+
+//Ambeint
+float3 ambientColor
+<
+  string UIName   = "Ambient Color";
+  string Type     = "Color";
+> = {0.0, 0.0, 0.0};
+
+//Diffuse
+float3 diffuseColor
+<
+  string UIName   = "Diffuse Color";
+  string Type     = "Color";
+> = {0.5, 0.5, 0.5};
+
+float3 specularColor
+<
+  string UIName   = "Specular Color";
+  string Type     = "Color";
+> = {0.5, 0.5, 0.5};
+
+float specularPower
+<
+  float UIMin     = 1.0;
+  float UIMax     = 256.0;
+  float UIStep    = 0.1;
+  string UIName   = "Specular Power";
+> = 30.0;
+
+float glossySharpness
+<
+  float UIMin     = -3;
+  float UIMax     = 1;
+  float UIStep    = 0.1;
+  string UIName   = "Glossy Spec Sharpness";
+> = 0.0;
+
+bool spacerOutline<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Outline
+bool drawBlackShell
+<
+  string UIName   = "Draw a Black Shell Around Mesh";
+> = false;
+
+float shellThickness
+<
+  float UIMin     = 0.0;
+  float UIMax     = 0.5;
+  float UIStep    = 0.001;
+  string UIName   = "Shell Thickness";
+> = 0.05;
+
+bool drawBlackOutline
+<
+  string UIName   = "Draw a Black Outline On Mesh";
+> = false;
+
+float outlineThickness
+<
+  float UIMin     = 0.0;
+  float UIMax     = 0.5;
+  float UIStep    = 0.001;
+  string UIName   = "Black Outline Thickness";
+> = 0.15;
+
+bool spacerDiffuse<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Diffuse Textures
+bool useDiffuseTexture
+<
+  string UIWidget = "RadioButton";
+  string UIName   = "Use A Diffuse Texture?";
+> = false;
+
+bool alphaInDiffuse
+<
+  string UIName   = "Use Diffuse Map Alpha for Transparency?";
+> = false;
+
+bool specularInDiffuse
+<
+  string UIName   = "Specual Map is in the Diffuse's Alpha";
+> = false;
+
+texture diffuseMap
+<
+  string ResourceName = "";
+  string ResourceType = "2D";
+  string UIName       = "Diffuse Map";
+>;
+
+sampler2D diffuseMapSampler = sampler_state
+{
+  Texture       = <diffuseMap>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  MaxAnisotropy = 8;
+};
+
+bool useSpecularTexture
+<
+  string UIName   = "Use A Specular Texture?";
+> = false;
+
+texture specularMap
+<
+  string ResourceName = "";
+  string ResourceType = "2D";
+  string UIName       = "Specular Map";
+>;
+
+sampler2D specularMapSampler = sampler_state
+{
+  Texture       = <specularMap>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  MaxAnisotropy = 8;
+};
+
+bool multiplyAddToggle
+<
+  string UIName   = "Toggle Multipy/Add Toon Ramp";
+> = true;
+
+texture toonRampMap
+<
+  string ResourceName = "";
+  string ResourceType = "2D";
+  string UIName       = "Toon Ramp Texture";
+>;
+
+sampler2D toonRampMapSampler = sampler_state
+{
+  Texture   = <toonRampMap>;
+  MinFilter = LinearMipMapLinear;
+  MagFilter = Linear;
+  WrapS     = ClampToEdge;
+  WrapT     = Wrap;
+};
+
+bool spacerN<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Normal Map Textures
+bool useNormalTexture
+<
+  string UIName   = "Use A Normal Map?";
+> = false;
+
+bool specularInNormal
+<
+  string UIName   = "Specual Map is in the Normal Map's Alpha";
+> = false;
+
+//Normalmap Sampler
+texture normalMap
+<
+  string ResourceType = "2D";
+  string UIName       = "Normal Map";
+>;
+
+sampler2D normalMapSampler = sampler_state
+{
+  Texture       = <normalMap>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  MaxAnisotropy = 4;
+};
+
+bool spacerGlow<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Glow Map
+bool useGlowTexture
+<
+  string UIName = "Use A Glow Texture?";
+> = false;
+
+float glowUnlit
+<
+  float UIMin     = 0.0;
+  float UIMax     = 1.0;
+  float UIStep    = 0.1;
+  string UIName   = "Glow Map Unlit Masking";
+> = 0.0;
+
+texture glowMap
+<
+  string ResourceType = "2D";
+  string UIName       = "Glow Map";
+>;
+
+sampler2D glowMapSampler = sampler_state
+{
+  Texture   = <glowMap>;
+  MinFilter = LinearMipMapLinear;
+  MagFilter = Linear;
+  WrapS     = Wrap;
+  WrapT     = Wrap;
+};
+
+bool spacerRim<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Rim Light
+bool useRimLight
+<
+  string UIName   = "Use Rim Light?";
+> = true;
+
+float rimExponent
+<
+  float UIMin     = 0.0;
+  float UIMax     = 2.0;
+  float UIStep    = 0.1;
+  string UIName   = "Rim Light Exponent";
+> = 0.5;
+
+float3 rimColor
+<
+  string UIName   = "Rim Light Color";
+  string Type     = "Color";
+> = {0.75, 0.9, 1.0};
+
+bool spacerHemi<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////////////////////////////////////////////////
+//Hemispherical Ambient Shading
+bool useAmbientHemi
+<
+  string UIName = "Use Hemispherical Ambient?";
+> = false;
+
+float3 skyColor
+<
+  string UIName   = "Hemispherical Sky Color";
+  string Type     = "Color";
+> = {0.7, 0.95, 1.0};
+
+float3 groundColor
+<
+  string UIName   = "Hemispherical Ground Color";
+  string Type     = "Color";
+> = {0.0, 0.0, 0.0};
+
+bool spacerLights<string UIName   = ">>>>>>>>>>>>>>>>>>>>>>>>>>";> = false;
+////////////////////////////////////////
+//     Lights - position and color    //
+////////////////////////////////////////
+
+float4 light1Dir : DIRECTION
+<
+  string UIName = "Light 1 - Directional Light";
+  string Space  = "World";
+> = {0.0, -1.0, -1.0, 0.0};
+
+float3 light1Color
+<
+  string UIName   = "Light1Color";
+  string Type     = "Color";
+> = {1.0, 1.0, 1.0};
+
+////////////////////////////////////////
+//     Auto Maxtricies                //
+////////////////////////////////////////
+
+float4x4 WorldViewProjection   : WorldViewProjection   ;
+float4x4 WorldInverseTranspose : WorldInverseTranspose ;
+float4x4 ViewInverse           : ViewInverse           ;
+float4x4 World                 : World                 ;
+
+////////////////////////////////////////
+//     Structs                        //
+////////////////////////////////////////
+
+// input from application
+struct app2vert {
+  float4 Position : POSITION;
+  float2 TexCoord : TEXCOORD0;
+  float4 Normal   : NORMAL;
+  float4 Binormal : BINORMAL;
+  float4 Tangent  : TANGENT;
+};
+
+// output to fragment program
+struct vert2pixel {
+  float4 hpos          : POSITION;
+  float2 UV            : TEXCOORD0;
+  float3 worldNormal   : TEXCOORD2;
+  float3 worldBinormal : TEXCOORD3;
+  float3 worldTangent  : TEXCOORD4;
+  float3 eyeVec        : TEXCOORD5;
+};
+
+////////////////////////////////////////
+//     VERTEX SHADER                  //
+////////////////////////////////////////
+
+vert2pixel VS(app2vert IN, uniform bool backface)
+{
+  vert2pixel OUT;
+
+  OUT.hpos = mul(WorldViewProjection, IN.Position);
+  OUT.UV = IN.TexCoord.xy;
+
+  OUT.worldNormal   = (backface) ? -1*mul(WorldInverseTranspose, IN.Normal).xyz : mul(WorldInverseTranspose, IN.Normal).xyz;
+  OUT.worldTangent  = mul(WorldInverseTranspose, IN.Tangent).xyz;
+  OUT.worldBinormal = mul(WorldInverseTranspose, IN.Binormal).xyz;
+
+  float3 worldSpacePos  = mul(World, IN.Position).xyz;
+  float3 worldCameraPos = float3(ViewInverse[0].w,ViewInverse[1].w,ViewInverse[2].w);
+  OUT.eyeVec = worldCameraPos - worldSpacePos;
+
+  return OUT;
+}
+
+vert2pixel VS_Shell(app2vert IN)
+{
+  vert2pixel OUT;
+
+  OUT.UV = IN.TexCoord.xy;
+
+  float4 Po = float4(IN.Position.xyz,1);
+  Po += (shellThickness*normalize(float4(IN.Normal.xyz,0))); // the balloon effect
+
+  OUT.hpos = mul(WorldViewProjection, Po);
+  float3 worldSpacePos  = mul(World, Po).xyz;
+
+  return OUT;
+}
+
+////////////////////////////////////////
+//     Fragment Program Functions     //
+////////////////////////////////////////
+
+float3 ungamma22 (float3 input)
+{
+  return (linear) ? pow(input,2.2) : input;
+}
+
+float3 gamma22 (float3 input)
+{
+  return (linear) ? pow(input,1/2.2) : input;
+}
+
+float3 overlay (float3 a, float3 b, float opacity)
+{
+  return (a>0.5) ? (2*a*b*opacity) + b * (1-opacity) : 1-((1-b) * (1-a*opacity)) * (2-(1-opacity));
+}
+
+float3 filmicTonemap(float3 input) //John Hable's filmic tonemap function with fixed values
+{
+  float A = 0.22;
+  float B = 0.3;
+  float C = 0.1;
+  float D = 0.2;
+  float E = 0.01;
+  float F = 0.3;
+  float linearWhite = 11.2;
+  float3 Fcolor = ((input*(A*input+C*B)+D*E)/(input*(A*input+B)+D*F)) - E/F;
+  float  Fwhite = ((linearWhite*(A*linearWhite+C*B)+D*E)/(linearWhite*(A*linearWhite+B)+D*F)) - E/F;
+  return Fcolor/Fwhite;
+}
+
+float fresnel (float3 N, float3 V) //this is the most basic approximation of the fresnel function
+{
+    return max(0,pow(abs(1.0-dot(N,V)),rimExponent));
+}
+
+float3 glossy (float3 L, float3 V, float3 N, float roughness, float sharpness)
+//glossy ceramic like specular highlight - not physically accurate - sourced from The Renderman Shading Language Guide
+//values 0.18, 0.72 are arrived at empirically - roughness/3.333 brings the size into an equivalent range as blinn()
+{
+  float w = 0.18 * (1-sharpness);
+  float3 H = normalize(L + V);
+  float NdH = dot(N,H);
+  return smoothstep(-0.1,0.1,dot(N,L)) * smoothstep(0.72-w,0.72+w,pow(max(0,NdH),roughness/3.333));
+}
+
+//////////////////////////////////////////////////
+//     Compartmentalized Shading Components     //
+//////////////////////////////////////////////////
+
+////////////////////////////////////////
+// Toon Shading using a horizontal 1D Texture, unlit on left, lit on right
+float3 toon1D (float3 N,
+               float3 L)
+{
+  float2 UVt = float2( dot(N,L)+0.5*0.5, 0);
+  return ungamma22(tex2D(toonRampMapSampler, UVt).rgb); //sample the 1D texture with an N.L calculation for the s UV coord, and 0 for the t UV coord
+}
+
+////////////////////////////////////////
+// Tangent Space Normal Mapping
+float3 normalsTangent (float4 normalTexture,
+                       float3 Nn,
+                       float3 Bn,
+                       float3 Tn,
+                       float3 V)
+{
+  if(useNormalTexture)
+  {
+    normalTexture.rgb = normalTexture.rgb * 2.0 - 1.0;
+    Nn = normalize((normalTexture.x*Tn)+(normalTexture.y*Bn)+(normalTexture.z*Nn));
+  }
+
+  return Nn;
+}
+
+////////////////////////////////////////
+// Rim lighting effect
+float3 rimLight (float3 shadingMask,
+                 float3 V,
+                 float3 Nn)
+{
+  shadingMask = (1-shadingMask);
+  rimColor = ungamma22(rimColor);
+  float3 Rm = smoothstep(rimExponent*shadingMask+0.05, rimExponent*shadingMask, dot(Nn,V))*rimColor;
+  return (useRimLight) ? Rm : 0;
+}
+
+////////////////////////////////////////
+// Outline
+float outline (float3 V,
+               float3 Nn)
+{
+  return (drawBlackOutline) ? smoothstep(outlineThickness-0.05, outlineThickness, dot(Nn,V)) : 1;
+}
+
+////////////////////////////////////////
+// Glow Texture
+float3 glow (float3 glowTexture,
+             float3 cellShading,
+             float3 L,
+             float3 N)
+{
+  return (useGlowTexture) ? lerp(glowTexture,glowTexture*glowUnlit,cellShading) : 0;
+}
+////////////////////////////////////////
+// Alpha Texture
+float alpha (float4 diffuseTexture)
+{
+  float A = 1;
+  if(alphaInDiffuse && useDiffuseTexture) A = diffuseTexture.a;
+  if(specularInDiffuse || !useDiffuseTexture) A = 1;
+
+  return A;
+}
+
+////////////////////////////////////////
+//     Pixel Shaders                  //
+////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+//     Shell Outline Shader
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+float4 PS_Shell (vert2pixel IN) : COLOR
+{
+  float2 UV   = IN.UV;
+
+  float4 Dt     = tex2D(diffuseMapSampler, UV);
+
+  float3 Ci = float3(0.0,0.0,0.0);
+  float  Oi = (drawBlackShell) ? alpha(Dt) : 0.0;
+  return float4(Ci,Oi);  //Incident Color and Incident Opacity
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+//     Comic Shader
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+float4 PS_Comic (vert2pixel IN) : COLOR
+{
+
+  float3 V   = normalize(IN.eyeVec);
+  float3 Nw  = normalize(IN.worldNormal);
+  float3 Bw  = normalize(IN.worldBinormal);
+  float3 Tw  = normalize(IN.worldTangent);
+
+  float2 UV = IN.UV;
+
+  float4 Nt     = tex2D(normalMapSampler, UV);
+  float4 Dt     = tex2D(diffuseMapSampler, UV);
+  float4 Gt     = tex2D(glowMapSampler, UV);
+  float4 St     = tex2D(specularMapSampler, UV);
+
+  Nt.a   = float(ungamma22(Nt.a));
+  Dt.rgb = ungamma22(Dt.rgb);
+  if(!alphaInDiffuse && specularInDiffuse) Dt.a   = float(ungamma22(Dt.a));
+  Gt.rgb = ungamma22(Gt.rgb);
+  St.rgb = ungamma22(St.rgb);
+
+  ambientColor  = ungamma22(ambientColor);
+  diffuseColor  = ungamma22(diffuseColor);
+  specularColor = ungamma22(specularColor);
+
+  // Normal Component
+  float3 N = normalsTangent(Nt,
+                            Nw,
+                            Bw,
+                            Tw,
+                            V);
+
+  // Light Loop
+  // Diffuse and Specular
+  float3 Ci = 0;  //Incident Color
+
+  float3 L = normalize(-light1Dir.xyz);
+  float3 Lc = ungamma22(light1Color); //light color is an interface color swatch and needs to be gamma corrected
+
+  float2 UVcell = float2( dot(N,L)+0.5*0.5, 0);
+
+  float3 Cell     = ungamma22(tex2D(toonRampMapSampler, UVcell).rgb) * Lc;
+  float3 Specular = glossy (L, V, N, specularPower, glossySharpness) * Lc * specularColor;
+  if(useSpecularTexture)  Specular *= St;
+  if(specularInNormal  && useNormalTexture && !useSpecularTexture)  Specular *= Nt.a;
+  if(specularInDiffuse && useDiffuseTexture && !useSpecularTexture) Specular *= Dt.a;
+
+  float3 Diffuse = (useDiffuseTexture) ? ((multiplyAddToggle) ? Cell*Dt.rgb : Cell+Dt.rgb) : ((multiplyAddToggle) ? Cell*diffuseColor : Cell+diffuseColor);
+
+  Ci += Diffuse+Specular;
+
+  //NdL Shading Only
+  float3 diffuseIntensity = (dot(N,L)*0.5+0.5); //store a variable of just the diffuse light
+
+  //Glow Component
+  Ci += glow(Gt.rgb,Cell,N,L);
+
+  // Rim Light Component
+  Ci += rimLight (diffuseIntensity,
+                  V,
+                  N);
+
+  //Ambient Component
+  ambientColor *= (useAmbientHemi) ? lerp(groundColor,skyColor,max(0,0.5*N.y+0.5)) : 1;
+  Ci += (useDiffuseTexture) ? ambientColor*Dt.rgb : ambientColor*diffuseColor;
+
+  //onlutline Component
+  float3 Noutline = Nw;
+  Ci *= outline(V,
+                Noutline);
+
+  // Alpha Component
+  float Oi = alpha(Dt);
+
+  Ci = gamma22(Ci);  //re-apply gamma, without tonemapping
+
+  return float4(Ci,Oi);  //Incident Color and Incident Opacity
+}
+
+////////////////////////////////////////
+//     Techniques                     //
+////////////////////////////////////////
+
+technique Double_Sided //one bit alpha testing
+{
+  pass Shell
+  {
+    CullFaceEnable=true;
+    CullMode = Front;
+    DepthTestEnable=true;
+    DepthMask = true;
+    DepthFunc = LEqual;
+    AlphaTestEnable = true;           //alpha test flag
+    AlphaFunc = float2(Greater, .5);  //alpha test flag
+    VertexProgram   = compile arbvp1 VS_Shell();
+    FragmentProgram = compile arbfp1 PS_Shell();
+  }
+  pass Back
+  {
+    CullFaceEnable=true;
+    CullMode = Front;
+    DepthTestEnable=true;
+    DepthMask = true;
+    DepthFunc = LEqual;
+    AlphaTestEnable = true;           //alpha test flag
+    AlphaFunc = float2(Greater, .5);  //alpha test flag
+    VertexProgram   = compile arbvp1 VS(true);
+    FragmentProgram = compile arbfp1 PS_Comic();
+  }
+    pass Front
+  {
+    CullFaceEnable=true;
+    CullMode = Back;
+    DepthTestEnable=true;
+    DepthMask = true;
+    DepthFunc = LEqual;
+    AlphaTestEnable = true;           //alpha test flag
+    AlphaFunc = float2(Greater, .5);  //alpha test flag
+    VertexProgram   = compile arbvp1 VS(false);
+    FragmentProgram = compile arbfp1 PS_Comic();
+  }
+}
+
+technique _ //empty technique for Maya 2011
+{
+  pass P0
+  {
+    //empty
+  }
+}

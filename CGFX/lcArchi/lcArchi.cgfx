@@ -1,0 +1,254 @@
+//lcShader.cgfx
+
+string description = "Leo Covarrubias - blog.leocov.com";
+string URL = "http://blog.leocov.com/search/label/cgfx";
+string name = "lcArchi.cgfx";
+
+#include "../_basic.cgh" // basic helper functions
+#include "../_shading.cgh" // shading functions
+#include "lcArchiAttr.cgh" // user tweakables, auto matricies and structs
+
+bool TEXTURES____________________ = false;
+
+samplerCUBE envCubeTextureSampler = sampler_state
+{
+  Texture   = <envCubeTexture>;
+  MinFilter = LinearMipMapLinear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  WrapR     = ClampToEdge;
+  WrapS     = ClampToEdge;
+  WrapT     = ClampToEdge;
+};
+
+sampler2D diffuseTextureSampler = sampler_state
+{
+  Texture       = <diffuseTexture>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  MipFilter			= Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  MipMapLodBias = -0.5;
+};
+
+sampler2D specularTextureSampler = sampler_state
+{
+  Texture       = <specularTexture>;
+  MinFilter     = Linear;
+  MagFilter     = Linear;
+  MipFilter     = Linear;
+  AddressU      = Wrap;
+  AddressV      = Wrap;
+  MipMapLodBias = -0.5;
+};
+
+sampler2D normalTextureSampler = sampler_state
+{
+  Texture       = <normalTexture>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  MipFilter     = Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  MipMapLodBias = -0.5;
+};
+
+sampler2D occlusionTextureSampler = sampler_state
+{
+  Texture       = <occlusionTexture>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  MipFilter     = Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  MipMapLodBias = -0.5;
+};
+
+sampler2D glowTextureSampler = sampler_state
+{
+  Texture       = <glowTexture>;
+  MinFilter     = LinearMipMapLinear;
+  MagFilter     = Linear;
+  MipFilter     = Linear;
+  WrapS         = Wrap;
+  WrapT         = Wrap;
+  MipMapLodBias = -0.5;
+};
+
+sampler2D rimMaskTextureSampler = sampler_state
+{
+  Texture   = <rimMaskTexture>;
+  MinFilter = LinearMipMapLinear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  AddressU  = Wrap;
+  AddressV  = Wrap;
+};
+
+sampler2D reflectivityMaskTextureSampler = sampler_state
+{
+  Texture   = <reflectivityMaskTexture>;
+  MinFilter = LinearMipMapLinear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  AddressU  = Wrap;
+  AddressV  = Wrap;
+};
+
+sampler2D shadow0TextureSampler = sampler_state
+{
+  Texture   = <shadow0Texture>;
+  MinFilter = Linear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  AddressU  = Wrap;
+  AddressV  = Wrap;
+};
+sampler2D shadow1TextureSampler = sampler_state
+{
+  Texture   = <shadow1Texture>;
+  MinFilter = Linear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  AddressU  = Wrap;
+  AddressV  = Wrap;
+};
+sampler2D shadow2TextureSampler = sampler_state
+{
+  Texture   = <shadow2Texture>;
+  MinFilter = Linear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  AddressU  = Wrap;
+  AddressV  = Wrap;
+};
+sampler2D shadow3TextureSampler = sampler_state
+{
+  Texture   = <shadow3Texture>;
+  MinFilter = Linear;
+  MagFilter = Linear;
+  MipFilter = Linear;
+  AddressU  = Wrap;
+  AddressV  = Wrap;
+};
+
+//================================================
+//     VERTEX SHADER
+//================================================
+vert2pixel VS(app2vert IN, uniform bool backface)
+{
+  vert2pixel OUT;
+
+  OUT.hpos = mul(WorldViewProjection, IN.Position);
+  
+  if(outputInUvSpace)
+  {
+  	float2 uvBake = (outputToUvBake) ? IN.TexCoordBake : IN.TexCoord;
+		float2 uvPos = uvBake * float2(2,-2*FIXCOORD) + float2(-1,1*FIXCOORD);
+		OUT.hpos = float4(uvPos,0,1);
+	}
+	
+  OUT.UV.xy = IN.TexCoord.xy;
+  OUT.UV.zw = IN.TexCoordShadow.xy;
+
+  OUT.worldNormal   = (backface) ? -1*mul(WorldInverseTranspose, IN.Normal).xyz : mul(WorldInverseTranspose, IN.Normal).xyz;
+  OUT.worldTangent  = mul(WorldInverseTranspose, IN.Tangent).xyz;
+  OUT.worldBinormal = mul(WorldInverseTranspose, IN.Binormal).xyz;
+
+  OUT.WSPos = mul(World, IN.Position).xyz;
+  OUT.eyeVec.xyz = float3(ViewInverse[0].w,ViewInverse[1].w,ViewInverse[2].w) - OUT.WSPos.xyz;
+
+  return OUT;
+}
+//================================================
+//     Pixel Shaders
+//================================================
+
+#include "lcArchiLists.cgh" //light and shadow lists
+#include "lcArchiPSFull.cgh" //full shading
+
+//================================================
+//     Techniques
+//================================================
+technique gp4fp_blend
+{
+  pass Front
+  {
+    CullFaceEnable=true;
+    CullMode = Back;
+
+    DepthMask = true;
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    
+	  BlendEnable = true;
+  	BlendFunc = int2(SrcAlpha, OneMinusSrcAlpha );
+  	BlendFuncSeparate = int4(SrcAlpha, OneMinusSrcAlpha, One, OneMinusSrcAlpha );
+	  BlendEquationSeparate = int2(Add, Add );
+	  BlendColor = float4(1.0, 1.0, 1.0, 1.0 );
+
+    VertexProgram   = compile gp4vp VS(false);
+    FragmentProgram = compile gp4fp PSFull();
+  }
+  pass Back
+  {
+    CullFaceEnable=true;
+    CullMode = Front;
+
+    DepthMask = true;
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    
+	  BlendEnable = true;
+  	BlendFunc = int2(SrcAlpha, OneMinusSrcAlpha );
+  	BlendFuncSeparate = int4(SrcAlpha, OneMinusSrcAlpha, One, OneMinusSrcAlpha );
+	  BlendEquationSeparate = int2(Add, Add );
+	  BlendColor = float4(1.0, 1.0, 1.0, 1.0 );
+
+    VertexProgram   = compile gp4vp VS(true);
+    FragmentProgram = compile gp4fp PSFull();
+  }
+}
+
+technique gp4fp_test
+{
+  pass Front
+  {
+    CullFaceEnable=true;
+    CullMode = Back;
+
+    DepthMask = true;
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    
+    AlphaTestEnable = true;
+    AlphaFunc = float2(GEqual, 0.5);
+
+    VertexProgram   = compile gp4vp VS(false);
+    FragmentProgram = compile gp4fp PSFull();
+  }
+  pass Back
+  {
+    CullFaceEnable=true;
+    CullMode = Front;
+
+    DepthMask = true;
+    DepthTestEnable = true;
+    DepthFunc = LEqual;
+    
+    AlphaTestEnable = true;
+    AlphaFunc = float2(GEqual, 0.5);
+
+    VertexProgram   = compile gp4vp VS(true);
+    FragmentProgram = compile gp4fp PSFull();
+  }
+}
+
+technique _ //empty technique for Maya 2011
+{
+  pass P0
+  {
+    //empty
+  }
+}

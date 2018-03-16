@@ -1,0 +1,57 @@
+//================================================
+//     Full Shading
+//================================================
+float4 PSFull (vert2pixel IN) : COLOR
+{
+	buildLightList(IN.WSPos);
+	buildShadowList(IN.UV.zw);
+
+	//Initialize variables
+	float3 V   = normalize(IN.eyeVec);
+  float3 Nw  = normalize(IN.worldNormal);
+  float3 Bw  = normalize(IN.worldBinormal);
+  float3 Tw  = normalize(IN.worldTangent);
+  float2 UV = IN.UV.xy;
+	float3 N = Nw;
+
+
+  //Initialize textures
+	float3 Color                 = 0.0;
+	float  Opacity               = i_fOpacity;
+	float3 Shadow                = 1.0;
+		
+	float3 Diffuse               = 0.0;
+	float3 Specular              = 0.0;
+				
+  //Shading
+  if (Opacity>0)
+  {				  	
+	  //Light Loop
+	  for (int i=0; i < MAX_LIGHTS; i++)
+	  {
+	  	if (lightList[i].lEnabled)
+	  	{
+		  	float3 L  = normalize(lightList[i].lVector);   //get the light vector
+		  	float3 Lc = ungamma22(lightList[i].lColor);    //get the light color, it's an interface color so ungamma
+		   
+		    Shadow = (shadowList[i].sEnabled) ? shadowList[i].sTexture : 1.0;
+		    
+		  	float3 Li = orenNayarComplex(L, (i_bNoDiffuseBump)?Nw:N, V, i_fSubsurface);
+		  		
+		  	Diffuse += Li * Lc * Shadow * attenuation(lightList[i].lVector) * lightList[i].lIntensity;
+		  	
+		  	float Si = torranceSparrow(N, V, L, i_fRoughness);
+		  	  				  				  	
+		  	Specular += Si * Lc * Shadow * attenuation(lightList[i].lVector) * lightList[i].lIntensity;
+		  }
+	  }
+	  
+	}
+	
+	Color += Diffuse*0;
+	Color += Specular;
+		
+	Color = lerp(Color, filmicTonemap(Color) , globalTonemap );
+  return float4(gamma22(Color), Opacity );
+  
+}
